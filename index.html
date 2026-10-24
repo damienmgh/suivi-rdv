@@ -618,7 +618,7 @@ function tourSheet() {
           : `<p class="empty">Aucune fiche ouverte trouvée pour « ${esc(x.zone)} ». Indiquez les départements (ex. 59/62) ou les villes (ex. Liège) dans la zone.</p>`}</div></div>
     </div>
     <div class="sheet-f"><span class="stamp">${x.modif ? "Modifiée le " + esc(x.modif) : ""}</span>
-      <span style="display:flex;gap:8px;flex-wrap:wrap">${x.id && SupaStore.isAdmin() ? (S.confirmTDel === x.id ? `<button class="btn small" id="tdel-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="tdel-no">Garder</button>` : `<button class="btn small ghost" id="tdel" style="color:var(--crit)">Supprimer</button>`) : ""}<button class="btn small" id="tprint">Imprimer</button><button class="btn small" id="tcancel">Annuler</button><button class="btn primary small" id="tsave">Enregistrer</button></span></div>
+      <span style="display:flex;gap:8px;flex-wrap:wrap">${x.id ? (S.confirmTDel === x.id ? `<button class="btn small" id="tdel-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="tdel-no">Garder</button>` : `<button class="btn small ghost" id="tdel" style="color:var(--crit)">Supprimer</button>`) : ""}<button class="btn small" id="tprint">Imprimer</button><button class="btn small" id="tcancel">Annuler</button><button class="btn primary small" id="tsave">Enregistrer</button></span></div>
   </aside>`;
 }
 function readTDraft() { document.querySelectorAll("[data-tk]").forEach(el => { S.tdraft[el.dataset.tk] = el.value; }); }

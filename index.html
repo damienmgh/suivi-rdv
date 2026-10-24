@@ -376,6 +376,11 @@ const SupaStore = {
     if (error) throw new Error(error.message);
     const i = state.fiches.findIndex(x => String(x.id) === String(id)); if (i >= 0) state.fiches.splice(i, 1);
   },
+  async deleteTournee(id, state) {
+    const { error } = await this.client().from("tournees").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    const i = state.tournees.findIndex(x => String(x.id) === String(id)); if (i >= 0) state.tournees.splice(i, 1);
+  },
   async logout() { await this.client().auth.signOut(); location.reload(); },
   async importFiches(rows, log) {
     let ok = 0;
@@ -613,7 +618,7 @@ function tourSheet() {
           : `<p class="empty">Aucune fiche ouverte trouvée pour « ${esc(x.zone)} ». Indiquez les départements (ex. 59/62) ou les villes (ex. Liège) dans la zone.</p>`}</div></div>
     </div>
     <div class="sheet-f"><span class="stamp">${x.modif ? "Modifiée le " + esc(x.modif) : ""}</span>
-      <span style="display:flex;gap:8px"><button class="btn small" id="tcancel">Annuler</button><button class="btn primary small" id="tsave">Enregistrer</button></span></div>
+      <span style="display:flex;gap:8px;flex-wrap:wrap">${x.id && SupaStore.isAdmin() ? (S.confirmTDel === x.id ? `<button class="btn small" id="tdel-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="tdel-no">Garder</button>` : `<button class="btn small ghost" id="tdel" style="color:var(--crit)">Supprimer</button>`) : ""}<button class="btn small" id="tprint">Imprimer</button><button class="btn small" id="tcancel">Annuler</button><button class="btn primary small" id="tsave">Enregistrer</button></span></div>
   </aside>`;
 }
 function readTDraft() { document.querySelectorAll("[data-tk]").forEach(el => { S.tdraft[el.dataset.tk] = el.value; }); }
@@ -688,6 +693,22 @@ function printFiche(f) {
     ${f.dateRDV ? `<div class="p-sec">Rendez-vous</div><div class="p-grid">${kv("Date", fr(f.dateRDV) + " (" + dow(f.dateRDV) + ")")}${kv("Heure", f.heure)}${kv("Durée", f.duree ? f.duree + " h" : "")}${kv("Lieu / format", f.lieu)}</div>` : ""}
     <div class="p-sec">Historique</div><div class="p-hist">${esc(f.hist) || "Aucun historique."}</div>
     <p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "portrait");
+}
+function printTour(x) {
+  const Rv = rdvsIn(x), P = aPlacer(x);
+  const per = fr(x.du) + (x.au && x.au !== x.du ? " au " + fr(x.au) : "");
+  const rdvRows = Rv.map(f => `<tr><td><b>${dow(f.dateRDV)} ${fr(f.dateRDV)}</b><br>${esc(f.heure || "heure ?")}${f.duree ? " · " + esc(f.duree) + " h" : ""}</td>
+    <td><b>${esc(f.soc)}</b><br>${esc(f.contact)}</td><td>${esc(f.tel)}<br>${esc(f.mail)}</td><td>${esc(f.lieu === "Sur site client" || !f.lieu ? f.adr : f.lieu)}</td>
+    <td>${esc(f.objet)}${f.consigne ? "<br><i>" + esc(f.consigne) + "</i>" : ""}</td></tr>`).join("");
+  const pRows = P.map(f => `<tr><td>${f.prio ? "P" + esc(f.prio) : ""}</td><td><b>${esc(f.soc)}</b><br>${esc(f.contact)}</td><td>${esc([f.pays, f.zone].filter(Boolean).join(" · "))}</td>
+    <td>${esc(f.tel)}</td><td>${esc(f.etape)}</td><td>${fr(f.relance)}</td><td>${esc(f.objet)}</td></tr>`).join("");
+  doPrint(printHead("Tournée " + x.zone, "S" + isoWeek(x.du) + " · " + per + (x.dispo ? " · " + x.dispo : "") + " · imprimée le " + fr(isoToday())) +
+    (x.consigne ? `<div class="p-sec">Consigne</div><div class="p-hist">${esc(x.consigne)}</div>` : "") +
+    `<div class="p-sec">RDV fixés (${Rv.length})</div>` +
+    (Rv.length ? `<table class="p-table"><colgroup><col style="width:14%"><col style="width:22%"><col style="width:18%"><col style="width:22%"><col style="width:24%"></colgroup><thead><tr><th>Date</th><th>Société / contact</th><th>Téléphone / mail</th><th>Adresse / lieu</th><th>Objet / consigne</th></tr></thead><tbody>${rdvRows}</tbody></table>` : "<p>Aucun RDV fixé sur cette période.</p>") +
+    `<div class="p-sec">Fiches à placer dans la zone (${P.length})</div>` +
+    (P.length ? `<table class="p-table"><colgroup><col style="width:5%"><col style="width:25%"><col style="width:9%"><col style="width:15%"><col style="width:14%"><col style="width:9%"><col style="width:23%"></colgroup><thead><tr><th>Prio</th><th>Société / contact</th><th>Zone</th><th>Téléphone</th><th>Étape</th><th>Relance</th><th>Objet</th></tr></thead><tbody>${pRows}</tbody></table>` : "<p>Aucune fiche à placer.</p>") +
+    `<p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "portrait");
 }
 function csvExport() {
   const keys = ["ref","soc","contact","tel","mail","adr","pays","zone","statut","prio","objet","consigne","resp","etape","nb","last","relance","dateRDV","heure","duree","lieu","hist","entree"];
@@ -764,7 +785,13 @@ $app.addEventListener("click", async e => {
     try { await SupaStore.deleteFiche(id, S); S.sel = null; S.draft = null; S.confirmDel = null; toast("Fiche supprimée : " + nm); render(); }
     catch (err) { toast("Suppression impossible : " + err.message); }
     return; }
-  const to = t.closest("[data-topen]"); if (to && !t.closest(".sheet")) { const x = S.tournees.find(y => String(y.id) === String(to.dataset.topen)); if (x) { S.tsel = x.id; S.tdraft = {...x}; render(); } return; }
+  const to = t.closest("[data-topen]"); if (to && !t.closest(".sheet")) { const x = S.tournees.find(y => String(y.id) === String(to.dataset.topen)); if (x) { S.tsel = x.id; S.tdraft = {...x}; S.confirmTDel = null; render(); } return; }
+  if (t.id === "tprint") { readTDraft(); printTour(S.tdraft); return; }
+  if (t.id === "tdel") { S.confirmTDel = S.tdraft.id; render(); return; }
+  if (t.id === "tdel-no") { S.confirmTDel = null; render(); return; }
+  if (t.id === "tdel-ok") { const id = S.tdraft.id, z = S.tdraft.zone;
+    try { await SupaStore.deleteTournee(id, S); S.tsel = null; S.tdraft = null; S.confirmTDel = null; toast("Tournée supprimée : " + z); render(); }
+    catch (err) { toast("Suppression impossible : " + err.message); } return; }
   if (t.id === "tclose" || t.id === "tcancel") { S.tsel = null; S.tdraft = null; render(); return; }
   if (t.id === "tsave") { readTDraft(); const x = S.tdraft;
     if (!x.du || !x.zone.trim()) { toast("Indiquez au moins la date de début et la zone"); return; }

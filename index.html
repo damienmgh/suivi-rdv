@@ -160,6 +160,27 @@ fieldset legend{padding:0;margin-bottom:8px}
 .spec td,.spec th{font-size:13px}
 .spec code{font-size:12px;background:var(--surface-2);padding:1px 4px;border-radius:2px}
 .steps{margin:0;padding-left:20px;display:grid;gap:6px}
+#print{display:none}
+@media print{
+  body::before,header.top,main,#toast{display:none!important}
+  :root{padding:0!important}
+  body{background:#fff!important;color:#222!important;font-size:10pt}
+  #print{display:block;color:#222}
+  .p-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #24346C;padding-bottom:8px;margin-bottom:10px}
+  .p-head img{height:34px}
+  .p-head h1{font-size:15pt;margin:0;color:#24346C}
+  .p-head small{display:block;color:#6B6E74;font-size:9pt}
+  .p-table{width:100%;border-collapse:collapse;font-size:8.5pt}
+  .p-table th{background:#24346C!important;color:#fff!important;text-align:left;padding:4px 5px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .p-table td{border-bottom:1px solid #E4E5E7;padding:4px 5px;vertical-align:top}
+  .p-table tr{page-break-inside:avoid}
+  .p-sec{font-size:8.5pt;letter-spacing:.12em;text-transform:uppercase;color:#8F9298;font-weight:700;margin:12px 0 4px;border-bottom:1px solid #E4E5E7}
+  .p-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:3px 18px}
+  .p-grid div{display:flex;gap:6px}.p-grid b{min-width:110px;color:#4A4C52}
+  .p-full{grid-column:1/-1}
+  .p-hist{white-space:pre-wrap;font-size:9pt;border:1px solid #E4E5E7;padding:6px}
+  .p-foot{margin-top:10px;font-size:8pt;color:#6B6E74}
+}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--night);color:#fff;padding:10px 16px;border-radius:3px;font-weight:600;z-index:60;box-shadow:var(--shadow)}
 @media (prefers-reduced-motion:no-preference){.toast{animation:up .18s ease-out}@keyframes up{from{transform:translate(-50%,8px);opacity:0}}}
 </style>
@@ -188,6 +209,7 @@ fieldset legend{padding:0;margin-bottom:8px}
 
 <main class="wrap" id="app"></main>
 <div id="toast" class="toast" hidden></div>
+<div id="print"></div>
 
 <script>
 /* ===================== Configuration ===================== */
@@ -468,6 +490,7 @@ function viewFiches() {
         <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="f-open" ${S.flt.open === "1" ? "checked" : ""}> Masquer réalisés / refus</label>
         <button class="btn small" id="f-reset">Effacer</button>
         <button class="btn primary small" id="new">+ Nouvelle fiche</button>
+        <button class="btn small" id="print-list">Imprimer la liste</button>
         <span class="count num">${L.length} fiche(s)</span>
       </div>
       <div class="tablewrap"><table>
@@ -529,7 +552,7 @@ function sheet() {
       </fieldset>
     </div>
     <div class="sheet-f"><span class="stamp">${f.modif ? "Modifié le " + esc(f.modif) : "Non enregistré"}</span>
-      <span style="display:flex;gap:8px">${f.id && SupaStore.isAdmin() ? (S.confirmDel === f.id ? `<button class="btn small" id="del-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="del-no">Garder</button>` : `<button class="btn small ghost" id="del" style="color:var(--crit)">Supprimer</button>`) : ""}<button class="btn small" id="cancel">Annuler</button><button class="btn primary small" id="save">Enregistrer</button></span></div>
+      <span style="display:flex;gap:8px">${f.id && SupaStore.isAdmin() ? (S.confirmDel === f.id ? `<button class="btn small" id="del-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="del-no">Garder</button>` : `<button class="btn small ghost" id="del" style="color:var(--crit)">Supprimer</button>`) : ""}<button class="btn small" id="print-fiche">Imprimer</button><button class="btn small" id="cancel">Annuler</button><button class="btn primary small" id="save">Enregistrer</button></span></div>
   </aside>`;
 }
 
@@ -592,6 +615,37 @@ function viewLogin(msg) {
     <p class="demo-note" style="margin:12px 0 0">Mot de passe oublié : demandez à Damien de le réinitialiser.</p>
     ${msg ? `<p style="margin:12px 0 0;font-weight:600;color:var(--ink)">${esc(msg)}</p>` : ""}
   </div>`;
+}
+function doPrint(html, orientation) {
+  let st = document.getElementById("page-size");
+  if (!st) { st = document.createElement("style"); st.id = "page-size"; document.head.appendChild(st); }
+  st.textContent = "@page{size:A4 " + orientation + ";margin:12mm}";
+  document.getElementById("print").innerHTML = html;
+  setTimeout(() => window.print(), 50);
+}
+window.addEventListener("afterprint", () => { const p = document.getElementById("print"); if (p) p.innerHTML = ""; });
+function printHead(title, sub) {
+  const logo = document.querySelector(".plate img").src;
+  return `<div class="p-head"><img src="${logo}" alt="MGH Industrial Gears"><div><h1>${esc(title)}</h1><small>${esc(sub)}</small></div></div>`;
+}
+function printList() {
+  const L = filtered(), F = S.flt;
+  const crit = [F.q && "recherche « " + F.q + " »", F.etape, F.alerte && (F.alerte === "*" ? "avec alerte" : F.alerte), F.pays, F.prio && "priorité " + F.prio, F.resp, F.open === "1" && !F.etape && "réalisés et refus masqués"].filter(Boolean);
+  const rows = L.map(f => `<tr><td><b>${esc(f.soc)}</b>${f.ref ? "<br><span style='color:#6B6E74'>" + esc(f.ref) + "</span>" : ""}</td><td>${esc(f.contact)}</td><td>${esc(f.tel)}</td>
+    <td>${esc([f.pays, f.zone].filter(Boolean).join(" · "))}</td><td>${f.prio ? "P" + esc(f.prio) : ""}</td><td>${esc(f.etape)}</td><td>${esc(alerte(f))}</td>
+    <td>${fr(f.relance)}</td><td>${f.dateRDV ? fr(f.dateRDV) + " " + esc(f.heure) : ""}</td><td>${esc(f.resp)}</td><td>${esc(f.objet)}</td></tr>`).join("");
+  doPrint(printHead("Suivi des rendez-vous · liste des fiches", "Imprimé le " + fr(isoToday()) + " · " + L.length + " fiche(s)" + (crit.length ? " · " + crit.join(", ") : "")) +
+    `<table class="p-table"><colgroup><col style="width:17%"><col style="width:11%"><col style="width:10%"><col style="width:6%"><col style="width:4%"><col style="width:10%"><col style="width:8%"><col style="width:7%"><col style="width:8%"><col style="width:6%"><col style="width:13%"></colgroup><thead><tr><th>Société</th><th>Contact</th><th>Téléphone</th><th>Zone</th><th>Prio</th><th>Étape</th><th>Alerte</th><th>Relance</th><th>RDV</th><th>Resp.</th><th>Objet</th></tr></thead><tbody>${rows}</tbody></table>` +
+    `<p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "landscape");
+}
+function printFiche(f) {
+  const kv = (k, v, full) => v === "" || v === null || v === undefined ? "" : `<div class="${full ? "p-full" : ""}"><b>${k}</b><span>${esc(v)}</span></div>`;
+  doPrint(printHead(f.soc || "Fiche", [f.ref, "Imprimée le " + fr(isoToday()), f.modif && "modifiée le " + f.modif].filter(Boolean).join(" · ")) +
+    `<div class="p-sec">Société et contact</div><div class="p-grid">${kv("Contact", f.contact)}${kv("Statut", f.statut)}${kv("Téléphone", f.tel)}${kv("Mail", f.mail)}${kv("Adresse", f.adr, true)}${kv("Pays / zone", [f.pays, f.zone].filter(Boolean).join(" · "))}</div>
+    <div class="p-sec">Pilotage</div><div class="p-grid">${kv("Étape", f.etape)}${kv("Alerte", alerte(f))}${kv("Priorité", f.prio ? "P" + f.prio : "")}${kv("Responsable", f.resp)}${kv("Nb tentatives", f.nb)}${kv("Dernier contact", fr(f.last))}${kv("Prochaine relance", fr(f.relance))}${kv("Date d'entrée", fr(f.entree))}${kv("Objet du RDV", f.objet, true)}${kv("Consigne Damien", f.consigne, true)}</div>
+    ${f.dateRDV ? `<div class="p-sec">Rendez-vous</div><div class="p-grid">${kv("Date", fr(f.dateRDV) + " (" + dow(f.dateRDV) + ")")}${kv("Heure", f.heure)}${kv("Durée", f.duree ? f.duree + " h" : "")}${kv("Lieu / format", f.lieu)}</div>` : ""}
+    <div class="p-sec">Historique</div><div class="p-hist">${esc(f.hist) || "Aucun historique."}</div>
+    <p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "portrait");
 }
 function csvExport() {
   const keys = ["ref","soc","contact","tel","mail","adr","pays","zone","statut","prio","objet","consigne","resp","etape","nb","last","relance","dateRDV","heure","duree","lieu","hist","entree"];
@@ -656,6 +710,8 @@ $app.addEventListener("click", async e => {
     try { await SupaStore.deleteFiche(id, S); S.sel = null; S.draft = null; S.confirmDel = null; toast("Fiche supprimée : " + nm); render(); }
     catch (err) { toast("Suppression impossible : " + err.message); }
     return; }
+  if (t.id === "print-list") { printList(); return; }
+  if (t.id === "print-fiche") { readDraft(); printFiche(S.draft); return; }
   if (t.id === "export") { csvExport(); toast("Export CSV téléchargé"); return; }
   if (t.id === "logout") { await SupaStore.logout(); return; }
   if (t.id === "ics") { readDraft(); icsFor(S.draft); toast("Fichier .ics téléchargé : ouvrez-le pour l'ajouter à Outlook"); return; }

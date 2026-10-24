@@ -556,10 +556,20 @@ function sheet() {
   </aside>`;
 }
 
+const rdvsIn = x => S.fiches.filter(f => f.etape === ETAPES[3] && f.dateRDV && f.dateRDV >= x.du && f.dateRDV <= (x.au || x.du))
+  .sort((a, b) => (a.dateRDV + a.heure).localeCompare(b.dateRDV + b.heure));
+const STOP = ["de","du","des","la","le","les","et","zone","nord","sud","est","ouest","centre","region","région","dpt","semaine"];
+function aPlacer(x) {
+  const toks = (x.zone || "").toLowerCase().split(/[^a-z0-9àâçéèêëîïôûùüÿœ-]+/).filter(w => w.length >= 2 && !STOP.includes(w));
+  if (!toks.length) return [];
+  return S.fiches.filter(f => !closed(f) && f.etape !== ETAPES[3] && f.zone && toks.some(w => {
+      const z = String(f.zone).toLowerCase(); return /^\d+$/.test(w) ? z === w.padStart(2, "0") : z.includes(w) || w.includes(z); }))
+    .sort((a, b) => (+a.prio || 9) - (+b.prio || 9) || (a.relance || "9").localeCompare(b.relance || "9"));
+}
 function viewTournees() {
   const t = isoToday();
   const L = [...S.tournees].sort((a,b) => a.du.localeCompare(b.du));
-  return `<div class="dash">
+  return `<div class="split ${S.tsel ? "open" : ""}"><div class="dash" style="min-width:0">
     <section class="panel span-12"><h2><span class="lbl">Ajouter une tournée</span></h2>
       <form id="tform" class="form-inline">
         <div class="f"><label for="t-du">Du</label><input id="t-du" type="date" required></div>
@@ -569,12 +579,44 @@ function viewTournees() {
         <div class="f" style="grid-column:span 2"><label for="t-cons">Consigne Damien</label><input id="t-cons" placeholder="Grouper les visites…"></div>
         <button class="btn primary" type="submit">Ajouter</button>
       </form></section>
-    <section class="panel span-12"><h2><span class="lbl">Tournées planifiées</span></h2>
+    <section class="panel span-12"><h2><span class="lbl">Tournées planifiées</span><span class="demo-note" style="margin:0">Cliquez sur une tournée pour l'ouvrir</span></h2>
       <div class="tablewrap" style="border:0"><table><thead><tr><th>Semaine</th><th>Du</th><th>Au</th><th>Zone</th><th>Disponibilité</th><th>Consigne</th><th>RDV fixés</th></tr></thead>
-      <tbody>${L.map(x => `<tr class="${(x.au || x.du) < t ? "closed" : ""}" style="cursor:default"><td class="num">S${isoWeek(x.du)}</td><td class="num">${fr(x.du)}</td><td class="num">${fr(x.au)}</td>
+      <tbody>${L.map(x => `<tr data-topen="${esc(x.id)}" class="${(x.au || x.du) < t ? "closed" : ""} ${String(S.tsel) === String(x.id) ? "sel" : ""}"><td class="num">S${isoWeek(x.du)}</td><td class="num">${fr(x.du)}</td><td class="num">${fr(x.au)}</td>
         <td class="soc">${esc(x.zone)}</td><td>${x.dispo === "Indisponible" ? `<span class="al crit">Indisponible</span>` : esc(x.dispo)}</td><td>${esc(x.consigne)}</td><td class="num"><b>${rdvIn(x)}</b></td></tr>`).join("") || `<tr><td colspan="7" class="empty">Aucune tournée.</td></tr>`}</tbody></table></div></section>
-  </div>`;
+  </div>${S.tsel ? tourSheet() : ""}</div>`;
 }
+function tourSheet() {
+  const x = S.tdraft; if (!x) return "";
+  const R = rdvsIn(x), P = aPlacer(x);
+  return `<aside class="sheet" aria-label="Tournée">
+    <div class="sheet-h"><div><h3>Tournée ${esc(x.zone)}</h3><small class="num">S${isoWeek(x.du)} · ${fr(x.du)}${x.au && x.au !== x.du ? " au " + fr(x.au) : ""} · ${R.length} RDV fixé(s)</small></div>
+      <button class="btn small" id="tclose">Fermer</button></div>
+    <div class="sheet-b">
+      <fieldset><legend class="lbl">Tournée</legend>
+        <div class="f"><label for="td-du">Du</label><input id="td-du" data-tk="du" type="date" value="${esc(x.du)}"></div>
+        <div class="f"><label for="td-au">Au</label><input id="td-au" data-tk="au" type="date" value="${esc(x.au)}"></div>
+        <div class="f"><label for="td-zone">Zone / départements</label><input id="td-zone" data-tk="zone" value="${esc(x.zone)}"></div>
+        <div class="f"><label for="td-dispo">Disponibilité</label><select id="td-dispo" data-tk="dispo">${opts(DISPO, x.dispo, "…")}</select></div>
+        <div class="f full"><label for="td-cons">Consigne Damien</label><textarea id="td-cons" data-tk="consigne" rows="2">${esc(x.consigne)}</textarea></div>
+      </fieldset>
+      <div><div class="lbl" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">RDV fixés sur la période
+        <span style="display:flex;gap:6px;flex-wrap:wrap">${R.length ? `<button class="btn small" id="ics-all">Tous les RDV dans Outlook (.ics)</button>` : ""}<button class="btn small" id="ics-tour">Bloquer la tournée dans Outlook</button></span></div>
+        <div class="rows">${R.length ? R.map(f => `<div class="row" style="grid-template-columns:92px minmax(0,1fr) auto;cursor:default">
+          <span class="r-date num">${dow(f.dateRDV)} ${f.dateRDV.slice(8,10)}/${f.dateRDV.slice(5,7)}<small>${esc(f.heure || "heure ?")}${f.duree ? " · " + esc(f.duree) + " h" : ""}</small></span>
+          <span style="min-width:0"><span class="r-soc">${esc(f.soc)}</span><span class="r-sub">${esc([f.contact, f.lieu, f.adr].filter(Boolean).join(" · "))}</span></span>
+          <span style="display:flex;gap:6px"><button class="btn small" data-ics="${esc(f.id)}">Outlook</button><button class="btn small ghost" data-open-f="${esc(f.id)}">Fiche</button></span></div>`).join("")
+          : `<p class="empty">Aucun RDV fixé sur cette période.</p>`}</div></div>
+      <div><div class="lbl" style="margin-bottom:6px">Fiches à placer dans cette zone (${P.length})</div>
+        <div class="rows">${P.length ? P.slice(0, 25).map(f => `<button class="row" data-open-f="${esc(f.id)}" style="grid-template-columns:44px minmax(0,1fr) auto">
+          <span>${prioHtml(f.prio)}</span><span style="min-width:0"><span class="r-soc">${esc(f.soc)}</span><span class="r-sub">${esc([zoneTxt(f), f.contact, f.objet].filter(Boolean).join(" · "))}</span></span>
+          <span>${pill(f.etape)}</span></button>`).join("") + (P.length > 25 ? `<p class="empty">25 premières fiches affichées, par priorité.</p>` : "")
+          : `<p class="empty">Aucune fiche ouverte trouvée pour « ${esc(x.zone)} ». Indiquez les départements (ex. 59/62) ou les villes (ex. Liège) dans la zone.</p>`}</div></div>
+    </div>
+    <div class="sheet-f"><span class="stamp">${x.modif ? "Modifiée le " + esc(x.modif) : ""}</span>
+      <span style="display:flex;gap:8px"><button class="btn small" id="tcancel">Annuler</button><button class="btn primary small" id="tsave">Enregistrer</button></span></div>
+  </aside>`;
+}
+function readTDraft() { document.querySelectorAll("[data-tk]").forEach(el => { S.tdraft[el.dataset.tk] = el.value; }); }
 function isoWeek(iso) { const [y,m,d] = iso.split("-").map(Number); const x = new Date(Date.UTC(y,m-1,d)); const n = x.getUTCDay() || 7; x.setUTCDate(x.getUTCDate() + 4 - n); const y0 = new Date(Date.UTC(x.getUTCFullYear(),0,1)); return Math.ceil(((x - y0) / 86400000 + 1) / 7); }
 
 function viewSetup() {
@@ -656,22 +698,34 @@ function csvExport() {
   a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
   a.download = "Suivi_RDV_" + isoToday() + ".csv"; document.body.appendChild(a); a.click(); a.remove();
 }
-function icsFor(f) {
+const icsTxt = s => String(s || "").replace(/\\/g,"\\\\").replace(/[,;]/g, m => "\\" + m).replace(/\r?\n/g, "\\n");
+const icsStamp = () => new Date().toISOString().replace(/[-:]/g,"").slice(0,15) + "Z";
+function veventRdv(f) {
   const d = f.dateRDV.replace(/-/g, ""), h = (f.heure || "08:00").replace(":", "");
   const [hh, mm] = (f.heure || "08:00").split(":").map(Number); const end = hh * 60 + mm + Math.round((+f.duree || 2) * 60);
   const e = String(Math.floor(end / 60) % 24).padStart(2,"0") + String(end % 60).padStart(2,"0");
-  const t = s => String(s || "").replace(/\\/g,"\\\\").replace(/[,;]/g, m => "\\" + m).replace(/\r?\n/g, "\\n");
-  const ics = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//MGH//Suivi RDV//FR","BEGIN:VEVENT",
-    "UID:rdv-" + f.id + "-" + d + "@suivi-rdv", "DTSTAMP:" + new Date().toISOString().replace(/[-:]/g,"").slice(0,15) + "Z",
+  return ["BEGIN:VEVENT", "UID:rdv-" + f.id + "-" + d + "@suivi-rdv", "DTSTAMP:" + icsStamp(),
     "DTSTART:" + d + "T" + h + "00", "DTEND:" + d + "T" + e + "00",
-    "SUMMARY:" + t("RDV " + f.soc + (f.contact ? " · " + f.contact : "")),
-    "LOCATION:" + t(f.lieu === "Sur site client" || !f.lieu ? (f.adr || f.soc) : f.lieu),
-    "DESCRIPTION:" + t(["Objet : " + (f.objet || ""), "Consigne : " + (f.consigne || ""), "Tél. : " + (f.tel || ""), "Mail : " + (f.mail || "")].join("\n")),
-    "END:VEVENT","END:VCALENDAR"].join("\r\n");
+    "SUMMARY:" + icsTxt("RDV " + f.soc + (f.contact ? " · " + f.contact : "")),
+    "LOCATION:" + icsTxt(f.lieu === "Sur site client" || !f.lieu ? (f.adr || f.soc) : f.lieu),
+    "DESCRIPTION:" + icsTxt(["Objet : " + (f.objet || ""), "Consigne : " + (f.consigne || ""), "Tél. : " + (f.tel || ""), "Mail : " + (f.mail || "")].join("\n")),
+    "END:VEVENT"];
+}
+function veventTour(x, rdvs) {
+  return ["BEGIN:VEVENT", "UID:tournee-" + x.id + "@suivi-rdv", "DTSTAMP:" + icsStamp(),
+    "DTSTART;VALUE=DATE:" + x.du.replace(/-/g, ""), "DTEND;VALUE=DATE:" + addDays(x.au || x.du, 1).replace(/-/g, ""),
+    "SUMMARY:" + icsTxt("Tournée " + x.zone), "TRANSP:TRANSPARENT",
+    "DESCRIPTION:" + icsTxt([x.dispo && "Disponibilité : " + x.dispo, x.consigne && "Consigne : " + x.consigne, "RDV fixés :"]
+      .concat(rdvs.map(f => "- " + fr(f.dateRDV) + " " + (f.heure || "") + " " + f.soc + (f.lieu ? " (" + f.lieu + ")" : ""))).filter(Boolean).join("\n")),
+    "END:VEVENT"];
+}
+function downloadIcs(events, name) {
+  const ics = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//MGH//Suivi RDV//FR"].concat(...events, ["END:VCALENDAR"]).join("\r\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
-  a.download = "RDV_" + (f.soc || "client").replace(/[^\w-]+/g, "_") + "_" + f.dateRDV + ".ics"; document.body.appendChild(a); a.click(); a.remove();
+  a.download = name.replace(/[^\w.-]+/g, "_"); document.body.appendChild(a); a.click(); a.remove();
 }
+function icsFor(f) { downloadIcs([veventRdv(f)], "RDV_" + (f.soc || "client") + "_" + f.dateRDV + ".ics"); }
 
 /* ===================== Rendu et événements ===================== */
 function render() {
@@ -683,7 +737,7 @@ function render() {
   $app.innerHTML = S.view === "dash" ? viewDash() : S.view === "fiches" ? viewFiches() : S.view === "tournees" ? viewTournees() : viewSetup();
   window.scrollTo(0, sc);
 }
-function go(view) { S.view = view; if (view !== "fiches") { S.sel = null; S.draft = null; } render(); window.scrollTo(0,0); }
+function go(view) { S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } render(); window.scrollTo(0,0); }
 function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.sel = id; S.draft = {...f}; S.view = "fiches"; render(); }
 function newFiche() { S.sel = "__new"; S.draft = { id:"", soc:"", contact:"", tel:"", mail:"", adr:"", pays:"", zone:"", statut:"Prospect", prio:2, objet:"", consigne:"",
   resp:"Vit'Admin", etape:ETAPES[0], nb:0, last:"", relance:"", dateRDV:"", heure:"", duree:"", lieu:"", agenda:"", hist:"", entree:"", modif:"" }; render(); setTimeout(() => document.getElementById("d-soc")?.focus(), 0); }
@@ -710,6 +764,17 @@ $app.addEventListener("click", async e => {
     try { await SupaStore.deleteFiche(id, S); S.sel = null; S.draft = null; S.confirmDel = null; toast("Fiche supprimée : " + nm); render(); }
     catch (err) { toast("Suppression impossible : " + err.message); }
     return; }
+  const to = t.closest("[data-topen]"); if (to && !t.closest(".sheet")) { const x = S.tournees.find(y => String(y.id) === String(to.dataset.topen)); if (x) { S.tsel = x.id; S.tdraft = {...x}; render(); } return; }
+  if (t.id === "tclose" || t.id === "tcancel") { S.tsel = null; S.tdraft = null; render(); return; }
+  if (t.id === "tsave") { readTDraft(); const x = S.tdraft;
+    if (!x.du || !x.zone.trim()) { toast("Indiquez au moins la date de début et la zone"); return; }
+    if (x.au && x.au < x.du) { toast("La date de fin précède la date de début"); return; }
+    try { const saved = await Store.saveTournee({...x}, S); S.tsel = saved.id; S.tdraft = {...saved}; toast("Tournée enregistrée"); render(); }
+    catch (err) { toast("Enregistrement impossible : " + err.message); } return; }
+  const ic = t.closest("[data-ics]"); if (ic) { const f = S.fiches.find(y => String(y.id) === String(ic.dataset.ics)); if (f) { icsFor(f); toast("Fichier .ics téléchargé : ouvrez-le pour l'ajouter à Outlook"); } return; }
+  if (t.id === "ics-all") { readTDraft(); const R = rdvsIn(S.tdraft); downloadIcs(R.map(veventRdv), "RDV_tournee_" + S.tdraft.zone + "_" + S.tdraft.du + ".ics"); toast(R.length + " RDV exportés vers Outlook"); return; }
+  if (t.id === "ics-tour") { readTDraft(); downloadIcs([veventTour(S.tdraft, rdvsIn(S.tdraft))], "Tournee_" + S.tdraft.zone + "_" + S.tdraft.du + ".ics"); toast("Tournée exportée vers Outlook"); return; }
+  const of = t.closest("[data-open-f]"); if (of) { S.tsel = null; S.tdraft = null; openFiche(of.dataset.openF); return; }
   if (t.id === "print-list") { printList(); return; }
   if (t.id === "print-fiche") { readDraft(); printFiche(S.draft); return; }
   if (t.id === "export") { csvExport(); toast("Export CSV téléchargé"); return; }
@@ -729,12 +794,16 @@ $app.addEventListener("click", async e => {
   if (t.id === "addnote") { readDraft(); const v = document.getElementById("note").value.trim(); if (v) { note(v); render(); } return; }
   if (t.id === "save") { readDraft(); const d = S.draft;
     if (!d.soc.trim()) { toast("Indiquez le nom de la société"); document.getElementById("d-soc").focus(); return; }
+    let auto = false;
+    if (d.dateRDV && [ETAPES[0], ETAPES[1], ETAPES[2], ETAPES[5]].includes(d.etape)) {
+      d.etape = ETAPES[3]; d.relance = ""; d.last = isoToday(); auto = true;
+      note("RDV fixé le " + frShort(d.dateRDV) + (d.heure ? " à " + d.heure : "")); }
     if (d.etape === ETAPES[3] && !d.dateRDV) { toast("RDV fixé : indiquez la date"); document.getElementById("d-dateRDV").focus(); return; }
     const isNew = !d.id;
     const prev = S.fiches.find(x => String(x.id) === String(d.id));
     if (prev && prev.etape === ETAPES[3] && (prev.dateRDV !== d.dateRDV || prev.heure !== d.heure)) d.agenda = "";
     if (CONFIG.mode === "demo") { if (isNew) d.entree = isoToday(); d.modif = fr(isoToday()) + " par " + (S.role === "DM" ? "Damien" : "Assistante"); }
-    try { const saved = await Store.saveFiche({...d}, S); S.sel = saved.id; S.draft = {...saved}; toast(isNew ? "Fiche créée : " + saved.id : "Fiche enregistrée"); render(); }
+    try { const saved = await Store.saveFiche({...d}, S); S.sel = saved.id; S.draft = {...saved}; toast((isNew ? "Fiche créée" : "Fiche enregistrée") + (auto ? " · étape passée en 4-RDV fixé" : "")); render(); }
     catch (err) { toast("Enregistrement impossible : " + err.message); }
     return; }
 });

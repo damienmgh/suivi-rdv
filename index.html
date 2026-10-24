@@ -109,8 +109,8 @@ main{padding-block:20px 48px}
 
 /* Liste des fiches */
 .split{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
-.split.open{grid-template-columns:minmax(0,1fr) minmax(360px,440px)}
-@media (max-width:1050px){.split.open{grid-template-columns:minmax(0,1fr)}}
+.split.open{grid-template-columns:minmax(0,1fr) minmax(720px,880px)}
+@media (max-width:1300px){.split.open{grid-template-columns:minmax(0,1fr)}}
 .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
 .filters input[type=search]{flex:1 1 220px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:3px;background:var(--surface)}
 .filters select{padding:7px 8px;border:1px solid var(--line);border-radius:3px;background:var(--surface);max-width:100%}
@@ -135,7 +135,7 @@ td.soc small{display:block;font-weight:400;color:var(--muted);font-size:12px}
 
 /* Panneau fiche */
 .sheet{background:var(--surface);border:1px solid var(--line);border-radius:4px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 76px);max-height:calc(100vh - 100px);overflow:auto}
-@media (max-width:1050px){.sheet{position:fixed;inset:0;max-height:none;border-radius:0;z-index:40;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}}
+@media (max-width:1300px){.sheet{position:fixed;inset:0;max-height:none;border-radius:0;z-index:40;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}}
 .sheet-h{display:flex;gap:8px;align-items:start;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:1}
 .sheet-h h3{margin:0;font-size:18px;color:var(--ink);line-height:1.2}
 .sheet-h small{color:var(--muted);font-size:12px}
@@ -348,6 +348,12 @@ const SupaStore = {
     const { error } = await this.client().auth.updateUser({ password });
     if (error) throw new Error(error.message);
   },
+  isAdmin() { return (this.user || "").toLowerCase() === "damien@mgh.be"; },
+  async deleteFiche(id, state) {
+    const { error } = await this.client().from("fiches").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    const i = state.fiches.findIndex(x => String(x.id) === String(id)); if (i >= 0) state.fiches.splice(i, 1);
+  },
   async logout() { await this.client().auth.signOut(); location.reload(); },
   async importFiches(rows, log) {
     let ok = 0;
@@ -523,7 +529,7 @@ function sheet() {
       </fieldset>
     </div>
     <div class="sheet-f"><span class="stamp">${f.modif ? "Modifié le " + esc(f.modif) : "Non enregistré"}</span>
-      <span style="display:flex;gap:8px"><button class="btn small" id="cancel">Annuler</button><button class="btn primary small" id="save">Enregistrer</button></span></div>
+      <span style="display:flex;gap:8px">${f.id && SupaStore.isAdmin() ? (S.confirmDel === f.id ? `<button class="btn small" id="del-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="del-no">Garder</button>` : `<button class="btn small ghost" id="del" style="color:var(--crit)">Supprimer</button>`) : ""}<button class="btn small" id="cancel">Annuler</button><button class="btn primary small" id="save">Enregistrer</button></span></div>
   </aside>`;
 }
 
@@ -624,7 +630,7 @@ function render() {
   window.scrollTo(0, sc);
 }
 function go(view) { S.view = view; if (view !== "fiches") { S.sel = null; S.draft = null; } render(); window.scrollTo(0,0); }
-function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.sel = id; S.draft = {...f}; S.view = "fiches"; render(); }
+function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.sel = id; S.draft = {...f}; S.view = "fiches"; render(); }
 function newFiche() { S.sel = "__new"; S.draft = { id:"", soc:"", contact:"", tel:"", mail:"", adr:"", pays:"", zone:"", statut:"Prospect", prio:2, objet:"", consigne:"",
   resp:"Vit'Admin", etape:ETAPES[0], nb:0, last:"", relance:"", dateRDV:"", heure:"", duree:"", lieu:"", agenda:"", hist:"", entree:"", modif:"" }; render(); setTimeout(() => document.getElementById("d-soc")?.focus(), 0); }
 function note(txt) { const d = S.draft; d.hist = frShort(isoToday()) + " " + S.role + " : " + txt + (d.hist ? "\n" + d.hist : ""); }
@@ -644,6 +650,12 @@ $app.addEventListener("click", async e => {
   if (t.id === "f-reset") { S.flt = { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1" }; saveUi(); render(); return; }
   if (t.id === "new") { newFiche(); return; }
   if (t.id === "close" || t.id === "cancel") { S.sel = null; S.draft = null; S.pending = false; render(); return; }
+  if (t.id === "del") { S.confirmDel = S.draft.id; render(); return; }
+  if (t.id === "del-no") { S.confirmDel = null; render(); return; }
+  if (t.id === "del-ok") { const id = S.draft.id, nm = S.draft.soc;
+    try { await SupaStore.deleteFiche(id, S); S.sel = null; S.draft = null; S.confirmDel = null; toast("Fiche supprimée : " + nm); render(); }
+    catch (err) { toast("Suppression impossible : " + err.message); }
+    return; }
   if (t.id === "export") { csvExport(); toast("Export CSV téléchargé"); return; }
   if (t.id === "logout") { await SupaStore.logout(); return; }
   if (t.id === "ics") { readDraft(); icsFor(S.draft); toast("Fichier .ics téléchargé : ouvrez-le pour l'ajouter à Outlook"); return; }

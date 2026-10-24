@@ -340,8 +340,12 @@ const SupaStore = {
     if (i >= 0) state.tournees[i] = saved; else state.tournees.push(saved);
     return saved;
   },
-  async login(email) {
-    const { error } = await this.client().auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
+  async login(email, password) {
+    const { error } = await this.client().auth.signInWithPassword({ email, password });
+    if (error) throw new Error(error.message === "Invalid login credentials" ? "adresse ou mot de passe incorrect" : error.message);
+  },
+  async setPassword(password) {
+    const { error } = await this.client().auth.updateUser({ password });
     if (error) throw new Error(error.message);
   },
   async logout() { await this.client().auth.signOut(); location.reload(); },
@@ -556,6 +560,13 @@ function viewSetup() {
         <button class="btn" id="export">Exporter vers Excel (CSV)</button>
         <button class="btn" id="logout">Se déconnecter</button>
       </div>
+      <form id="pwform" style="display:grid;gap:8px;margin-top:16px;max-width:360px">
+        <span class="lbl">Changer mon mot de passe</span>
+        <input type="text" autocomplete="username" value="${esc(SupaStore.user)}" hidden>
+        <div class="f"><label for="pw1">Nouveau mot de passe (8 caractères minimum)</label><input id="pw1" type="password" autocomplete="new-password" required></div>
+        <div class="f"><label for="pw2">Confirmer</label><input id="pw2" type="password" autocomplete="new-password" required></div>
+        <button class="btn small" type="submit">Enregistrer le mot de passe</button>
+      </form>
     </section>
     <section class="panel span-6"><h2><span class="lbl">Import initial (une seule fois)</span></h2>
       <p class="demo-note" style="margin:0 0 8px">Sélectionnez <code>import_fiches_SuiviRDV.json</code>. ${S.fiches.length ? "<b>La base contient déjà " + S.fiches.length + " fiches : un nouvel import créerait des doublons.</b>" : ""}</p>
@@ -566,11 +577,13 @@ function viewSetup() {
 function viewLogin(msg) {
   return `<div style="max-width:440px;margin:40px auto" class="panel">
     <h2 style="margin:0 0 6px;font-size:20px;color:var(--ink)">Connexion</h2>
-    <p class="demo-note" style="margin:0 0 14px">Saisissez votre adresse professionnelle : vous recevez un lien de connexion par e-mail. La session reste ouverte sur cet appareil.</p>
+    <p class="demo-note" style="margin:0 0 14px">Adresse professionnelle et mot de passe. La session reste ouverte sur cet appareil.</p>
     <form id="login" style="display:grid;gap:10px">
-      <div class="f"><label for="l-email">Adresse e-mail</label><input id="l-email" type="email" required autocomplete="email" placeholder="prenom@mgh.be"></div>
-      <button class="btn primary" type="submit">Recevoir le lien de connexion</button>
+      <div class="f"><label for="l-email">Adresse e-mail</label><input id="l-email" type="email" required autocomplete="username" placeholder="prenom@mgh.be" value="${esc(S.lastEmail || "")}"></div>
+      <div class="f"><label for="l-pass">Mot de passe</label><input id="l-pass" type="password" required autocomplete="current-password"></div>
+      <button class="btn primary" type="submit">Se connecter</button>
     </form>
+    <p class="demo-note" style="margin:12px 0 0">Mot de passe oublié : demandez à Damien de le réinitialiser.</p>
     ${msg ? `<p style="margin:12px 0 0;font-weight:600;color:var(--ink)">${esc(msg)}</p>` : ""}
   </div>`;
 }
@@ -676,9 +689,12 @@ $app.addEventListener("change", async e => {
 });
 $app.addEventListener("keydown", e => { if (e.target.id === "note" && e.key === "Enter") { e.preventDefault(); document.getElementById("addnote").click(); } });
 $app.addEventListener("submit", async e => {
-  if (e.target.id === "login") { e.preventDefault(); const em = document.getElementById("l-email").value.trim();
-    try { await SupaStore.login(em); S.loginMsg = "Lien envoyé à " + em + ". Ouvrez l'e-mail sur cet appareil et cliquez sur le lien."; }
-    catch (err) { S.loginMsg = "Envoi impossible : " + err.message; } render(); return; }
+  if (e.target.id === "login") { e.preventDefault(); const em = document.getElementById("l-email").value.trim(); S.lastEmail = em;
+    try { await SupaStore.login(em, document.getElementById("l-pass").value); S.loginMsg = ""; Object.assign(S, await Store.load()); boot2(); }
+    catch (err) { S.loginMsg = "Connexion impossible : " + err.message; } render(); return; }
+  if (e.target.id === "pwform") { e.preventDefault(); const a = document.getElementById("pw1").value, b = document.getElementById("pw2").value;
+    if (a.length < 8) { toast("8 caractères minimum"); return; } if (a !== b) { toast("Les deux saisies diffèrent"); return; }
+    try { await SupaStore.setPassword(a); toast("Mot de passe modifié"); e.target.reset(); } catch (err) { toast("Modification impossible : " + err.message); } return; }
   if (e.target.id !== "tform") return; e.preventDefault();
   const v = id => document.getElementById(id).value;
   try { await Store.saveTournee({ id: "", du: v("t-du"), au: v("t-au"), zone: v("t-zone"), dispo: v("t-dispo"), consigne: v("t-cons") }, S); toast("Tournée ajoutée"); render(); }
@@ -690,15 +706,19 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && S.sel) { S
   try { Object.assign(S, await Store.load()); }
   catch (err) { $app.innerHTML = `<div class="panel"><b>Connexion à la base impossible.</b><p>${esc(err.message)}</p><p>Vérifiez votre connexion internet puis rechargez la page.</p></div>`; return; }
   if (location.hash === "#fiches" || location.hash === "#tournees") S.view = location.hash.slice(1);
-  if (!S.needsLogin && !S.notMember && !S.fiches.length) S.view = "setup";
-  if (!S.needsLogin && !S.notMember) SupaStore.live((table, p) => {
+  boot2();
+  render();
+})();
+function boot2() {
+  if (S.needsLogin || S.notMember || boot2.done) return; boot2.done = true;
+  if (!S.fiches.length) S.view = "setup";
+  SupaStore.live((table, p) => {
     const map = table === "fiches" ? COLS : TCOLS, list = table === "fiches" ? S.fiches : S.tournees;
     if (p.eventType === "DELETE") { const i = list.findIndex(x => x.id === p.old.id); if (i >= 0) list.splice(i, 1); }
     else { const o = SupaStore.fromDb(p.new, map); const i = list.findIndex(x => x.id === o.id); if (i >= 0) list[i] = o; else list.unshift(o); }
     if (S.sel) { S.pending = true; } else render();
   });
-  render();
-})();
+}
 </script>
 
 </body>

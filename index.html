@@ -339,8 +339,10 @@ const SupaStore = {
     const { data: ok, error } = await this.client().rpc("is_member");
     if (error) throw new Error(error.message);
     if (!ok) return { notMember: true, fiches: [], tournees: [] };
+    const { data: role } = await this.client().rpc("my_role");
     const [a, b] = await Promise.all([this.all("fiches"), this.all("tournees")]);
-    return { fiches: a.map(r => this.fromDb(r, COLS)), tournees: b.map(r => this.fromDb(r, TCOLS)), needsLogin: false, notMember: false };
+    return { fiches: a.map(r => this.fromDb(r, COLS)), tournees: b.map(r => this.fromDb(r, TCOLS)), needsLogin: false, notMember: false,
+      access: role === "lecture" ? "lecture" : "editeur" };
   },
   async upsert(table, map, o) {
     const row = this.toDb(o, map);
@@ -381,6 +383,9 @@ const SupaStore = {
     if (error) throw new Error(error.message);
     const i = state.tournees.findIndex(x => String(x.id) === String(id)); if (i >= 0) state.tournees.splice(i, 1);
   },
+  async listUsers() { const { data, error } = await this.client().from("app_users").select("email,role").order("email"); if (error) throw new Error(error.message); return data; },
+  async setUser(email, role) { const { error } = await this.client().from("app_users").upsert({ email: email.toLowerCase().trim(), role }); if (error) throw new Error(error.message); },
+  async removeUser(email) { const { error } = await this.client().from("app_users").delete().eq("email", email); if (error) throw new Error(error.message); },
   async logout() { await this.client().auth.signOut(); location.reload(); },
   async importFiches(rows, log) {
     let ok = 0;
@@ -644,11 +649,36 @@ function viewSetup() {
         <button class="btn small" type="submit">Enregistrer le mot de passe</button>
       </form>
     </section>
-    <section class="panel span-6"><h2><span class="lbl">Import initial (une seule fois)</span></h2>
+    ${SupaStore.isAdmin() ? usersPanel() : ""}
+    <section class="panel span-6 w"><h2><span class="lbl">Import initial (une seule fois)</span></h2>
       <p class="demo-note" style="margin:0 0 8px">Sélectionnez <code>import_fiches_SuiviRDV.json</code>. ${S.fiches.length ? "<b>La base contient déjà " + S.fiches.length + " fiches : un nouvel import créerait des doublons.</b>" : ""}</p>
       <input type="file" id="inst-file" accept=".json,application/json" style="max-width:100%" ${S.fiches.length ? "disabled" : ""}>
       <div id="inst-log" class="hist" style="margin-top:12px;min-height:60px">${esc(S.instLog || "Journal d'import.")}</div>
     </section></div>`;
+}
+function usersPanel() {
+  const U = S.users || [];
+  return `<section class="panel span-6"><h2><span class="lbl">Utilisateurs autorisés</span></h2>
+    <div class="rows">${U.map(u => `<div class="row" style="grid-template-columns:minmax(0,1fr) 150px auto;cursor:default">
+      <span style="overflow-wrap:anywhere;font-weight:600;color:var(--ink)">${esc(u.email)}</span>
+      <select data-urole="${esc(u.email)}" aria-label="Rôle de ${esc(u.email)}" ${u.email === "damien@mgh.be" ? "disabled" : ""}>
+        <option value="editeur" ${u.role === "editeur" ? "selected" : ""}>Modification</option><option value="lecture" ${u.role === "lecture" ? "selected" : ""}>Lecture seule</option></select>
+      <span>${u.email === "damien@mgh.be" ? "" : `<button class="btn small ghost" data-udel="${esc(u.email)}" style="color:var(--crit)">${S.confirmUDel === u.email ? "Confirmer le retrait" : "Retirer"}</button>`}</span></div>`).join("") || `<p class="empty">Chargement…</p>`}</div>
+    <form id="uform" style="display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:8px;margin-top:12px;align-items:end">
+      <div class="f"><label for="u-email">Nouvelle adresse</label><input id="u-email" type="email" required placeholder="prenom@mgh.be"></div>
+      <div class="f"><label for="u-role">Rôle</label><select id="u-role"><option value="lecture">Lecture seule</option><option value="editeur">Modification</option></select></div>
+      <button class="btn primary small" type="submit">Autoriser</button>
+    </form>
+    <p class="demo-note" style="margin:10px 0 0">Étape suivante : créer son compte dans Supabase, Authentication &gt; Users &gt; Add user &gt; Create new user (adresse, mot de passe provisoire, Auto Confirm User coché).</p>
+  </section>`;
+}
+async function loadUsers() { try { S.users = await SupaStore.listUsers(); } catch (e) { S.users = []; toast("Liste des utilisateurs indisponible : " + e.message); } }
+function applyReadOnly() {
+  if (S.access !== "lecture") return;
+  $app.querySelectorAll(".w, #new, #save, #del, .quick, .note-row, #tform, #tsave, #tdel, #inst-file").forEach(el => {
+    const box = el.closest(".panel") && el.id === "tform" ? el.closest(".panel") : el.closest(".quick")?.parentElement || el;
+    box.hidden = true; });
+  $app.querySelectorAll("[data-k], [data-tk]").forEach(el => { el.disabled = true; });
 }
 function viewLogin(msg) {
   return `<div style="max-width:440px;margin:40px auto" class="panel">
@@ -756,9 +786,11 @@ function render() {
   const sc = window.scrollY;
   if (S.needsLogin || S.notMember) { $app.innerHTML = viewLogin(S.notMember ? "L'adresse " + SupaStore.user + " n'est pas autorisée. Demandez à Damien de l'ajouter." : S.loginMsg); return; }
   $app.innerHTML = S.view === "dash" ? viewDash() : S.view === "fiches" ? viewFiches() : S.view === "tournees" ? viewTournees() : viewSetup();
+  applyReadOnly();
+  const m = document.getElementById("mode"); if (m) { m.textContent = S.access === "lecture" ? "LECTURE SEULE" : "EN LIGNE"; m.classList.toggle("live", S.access !== "lecture"); }
   window.scrollTo(0, sc);
 }
-function go(view) { S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } render(); window.scrollTo(0,0); }
+function go(view) { if (view === "setup" && SupaStore.isAdmin()) loadUsers().then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } render(); window.scrollTo(0,0); }
 function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.sel = id; S.draft = {...f}; S.view = "fiches"; render(); }
 function newFiche() { S.sel = "__new"; S.draft = { id:"", soc:"", contact:"", tel:"", mail:"", adr:"", pays:"", zone:"", statut:"Prospect", prio:2, objet:"", consigne:"",
   resp:"Vit'Admin", etape:ETAPES[0], nb:0, last:"", relance:"", dateRDV:"", heure:"", duree:"", lieu:"", agenda:"", hist:"", entree:"", modif:"" }; render(); setTimeout(() => document.getElementById("d-soc")?.focus(), 0); }
@@ -802,6 +834,9 @@ $app.addEventListener("click", async e => {
   if (t.id === "ics-all") { readTDraft(); const R = rdvsIn(S.tdraft); downloadIcs(R.map(veventRdv), "RDV_tournee_" + S.tdraft.zone + "_" + S.tdraft.du + ".ics"); toast(R.length + " RDV exportés vers Outlook"); return; }
   if (t.id === "ics-tour") { readTDraft(); downloadIcs([veventTour(S.tdraft, rdvsIn(S.tdraft))], "Tournee_" + S.tdraft.zone + "_" + S.tdraft.du + ".ics"); toast("Tournée exportée vers Outlook"); return; }
   const of = t.closest("[data-open-f]"); if (of) { S.tsel = null; S.tdraft = null; openFiche(of.dataset.openF); return; }
+  const ud = t.closest("[data-udel]"); if (ud) { const em = ud.dataset.udel;
+    if (S.confirmUDel !== em) { S.confirmUDel = em; render(); return; }
+    try { await SupaStore.removeUser(em); S.confirmUDel = null; await loadUsers(); toast("Accès retiré : " + em); render(); } catch (err) { toast("Retrait impossible : " + err.message); } return; }
   if (t.id === "print-list") { printList(); return; }
   if (t.id === "print-fiche") { readDraft(); printFiche(S.draft); return; }
   if (t.id === "export") { csvExport(); toast("Export CSV téléchargé"); return; }
@@ -848,6 +883,7 @@ $app.addEventListener("change", async e => {
     return; }
   const t = e.target, map = { "f-etape":"etape", "f-pays":"pays", "f-prio":"prio", "f-resp":"resp", "f-alerte":"alerte" };
   if (map[t.id]) { S.flt[map[t.id]] = t.value; saveUi(); render(); }
+  if (t.dataset && t.dataset.urole) { try { await SupaStore.setUser(t.dataset.urole, t.value); await loadUsers(); toast("Rôle mis à jour"); render(); } catch (err) { toast("Modification impossible : " + err.message); } return; }
   if (t.id === "f-open") { S.flt.open = t.checked ? "1" : ""; saveUi(); render(); }
   if (t.dataset && t.dataset.k) { readDraft(); }
 });
@@ -856,6 +892,9 @@ $app.addEventListener("submit", async e => {
   if (e.target.id === "login") { e.preventDefault(); const em = document.getElementById("l-email").value.trim(); S.lastEmail = em;
     try { await SupaStore.login(em, document.getElementById("l-pass").value); S.loginMsg = ""; Object.assign(S, await Store.load()); boot2(); }
     catch (err) { S.loginMsg = "Connexion impossible : " + err.message; } render(); return; }
+  if (e.target.id === "uform") { e.preventDefault(); const em = document.getElementById("u-email").value.trim().toLowerCase(), ro = document.getElementById("u-role").value;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { toast("Adresse e-mail non valide"); return; }
+    try { await SupaStore.setUser(em, ro); await loadUsers(); toast(em + " autorisé (" + (ro === "lecture" ? "lecture seule" : "modification") + ")"); render(); } catch (err) { toast("Ajout impossible : " + err.message); } return; }
   if (e.target.id === "pwform") { e.preventDefault(); const a = document.getElementById("pw1").value, b = document.getElementById("pw2").value;
     if (a.length < 8) { toast("8 caractères minimum"); return; } if (a !== b) { toast("Les deux saisies diffèrent"); return; }
     try { await SupaStore.setPassword(a); toast("Mot de passe modifié"); e.target.reset(); } catch (err) { toast("Modification impossible : " + err.message); } return; }
@@ -876,6 +915,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && S.sel) { S
 function boot2() {
   if (S.needsLogin || S.notMember || boot2.done) return; boot2.done = true;
   if (!S.fiches.length) S.view = "setup";
+  if (SupaStore.isAdmin()) loadUsers().then(() => { if (S.view === "setup") render(); });
   SupaStore.live((table, p) => {
     const map = table === "fiches" ? COLS : TCOLS, list = table === "fiches" ? S.fiches : S.tournees;
     if (p.eventType === "DELETE") { const i = list.findIndex(x => x.id === p.old.id); if (i >= 0) list.splice(i, 1); }

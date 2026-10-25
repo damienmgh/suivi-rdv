@@ -340,6 +340,7 @@ const SupaStore = {
     if (error) throw new Error(error.message);
     if (!ok) return { notMember: true, fiches: [], tournees: [] };
     const { data: role } = await this.client().rpc("my_role");
+    this.client().rpc("log_connexion").then(() => {}, () => {});
     const [a, b] = await Promise.all([this.all("fiches"), this.all("tournees")]);
     return { fiches: a.map(r => this.fromDb(r, COLS)), tournees: b.map(r => this.fromDb(r, TCOLS)), needsLogin: false, notMember: false,
       access: role === "lecture" ? "lecture" : "editeur" };
@@ -386,6 +387,14 @@ const SupaStore = {
   async listUsers() { const { data, error } = await this.client().from("app_users").select("email,role").order("email"); if (error) throw new Error(error.message); return data; },
   async setUser(email, role) { const { error } = await this.client().from("app_users").upsert({ email: email.toLowerCase().trim(), role }); if (error) throw new Error(error.message); },
   async removeUser(email) { const { error } = await this.client().from("app_users").delete().eq("email", email); if (error) throw new Error(error.message); },
+  async journal(f) {
+    let q = this.client().from("journal").select("*").order("at", { ascending: false }).limit(500);
+    if (f.type) q = q.eq("action", f.type);
+    if (f.email) q = q.eq("email", f.email);
+    if (f.days) q = q.gte("at", new Date(Date.now() - (+f.days) * 864e5).toISOString());
+    if (f.rec) q = q.eq("objet", f.recObj || "fiche").eq("record_id", f.rec);
+    const { data, error } = await q; if (error) throw new Error(error.message); return data;
+  },
   async logout() { await this.client().auth.signOut(); location.reload(); },
   async importFiches(rows, log) {
     let ok = 0;
@@ -405,7 +414,7 @@ const SupaStore = {
 const Store = CONFIG.mode === "supabase" ? SupaStore : DemoStore;
 
 /* ===================== État de l'interface ===================== */
-const S = { fiches: [], tournees: [], view: "dash", role: "DM", sel: null, draft: null,
+const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], view: "dash", role: "DM", sel: null, draft: null,
   flt: { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1" }, sort: ["relance", 1] };
 try { const p = JSON.parse(localStorage.getItem("mgh-suivi-rdv-ui") || "{}"); if (p.role) S.role = p.role; if (p.flt) Object.assign(S.flt, p.flt); } catch (e) {}
 const saveUi = () => { try { localStorage.setItem("mgh-suivi-rdv-ui", JSON.stringify({ role: S.role, flt: S.flt })); } catch (e) {} };
@@ -562,7 +571,7 @@ function sheet() {
       </fieldset>
     </div>
     <div class="sheet-f"><span class="stamp">${f.modif ? "Modifié le " + esc(f.modif) : "Non enregistré"}</span>
-      <span style="display:flex;gap:8px">${f.id && SupaStore.isAdmin() ? (S.confirmDel === f.id ? `<button class="btn small" id="del-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="del-no">Garder</button>` : `<button class="btn small ghost" id="del" style="color:var(--crit)">Supprimer</button>`) : ""}<button class="btn small" id="print-fiche">Imprimer</button><button class="btn small" id="cancel">Annuler</button><button class="btn primary small" id="save">Enregistrer</button></span></div>
+      <span style="display:flex;gap:8px">${f.id && SupaStore.isAdmin() ? (S.confirmDel === f.id ? `<button class="btn small" id="del-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="del-no">Garder</button>` : `<button class="btn small ghost" id="del" style="color:var(--crit)">Supprimer</button>`) : ""}${f.id && SupaStore.isAdmin() ? `<button class="btn small ghost" id="fiche-journal">Modifications</button>` : ""}<button class="btn small" id="print-fiche">Imprimer</button><button class="btn small" id="cancel">Annuler</button><button class="btn primary small" id="save">Enregistrer</button></span></div>
   </aside>`;
 }
 
@@ -650,6 +659,7 @@ function viewSetup() {
       </form>
     </section>
     ${SupaStore.isAdmin() ? usersPanel() : ""}
+    ${SupaStore.isAdmin() ? journalPanel() : ""}
     <section class="panel span-6 w"><h2><span class="lbl">Import initial (une seule fois)</span></h2>
       <p class="demo-note" style="margin:0 0 8px">Sélectionnez <code>import_fiches_SuiviRDV.json</code>. ${S.fiches.length ? "<b>La base contient déjà " + S.fiches.length + " fiches : un nouvel import créerait des doublons.</b>" : ""}</p>
       <input type="file" id="inst-file" accept=".json,application/json" style="max-width:100%" ${S.fiches.length ? "disabled" : ""}>
@@ -671,6 +681,45 @@ function usersPanel() {
     </form>
     <p class="demo-note" style="margin:10px 0 0">Étape suivante : créer son compte dans Supabase, Authentication &gt; Users &gt; Add user &gt; Create new user (adresse, mot de passe provisoire, Auto Confirm User coché).</p>
   </section>`;
+}
+const JLABEL = { soc:"Société", ref:"Réf.", contact:"Contact", tel:"Téléphone", mail:"Mail", adr:"Adresse", pays:"Pays", zone:"Zone", statut:"Statut",
+  prio:"Priorité", objet:"Objet", consigne:"Consigne", resp:"Responsable", etape:"Étape", nb:"Tentatives", last:"Dernier contact", relance:"Relance",
+  date_rdv:"Date RDV", heure:"Heure", duree:"Durée", lieu:"Lieu", agenda:"Agenda Outlook", hist:"Historique", entree:"Date d'entrée",
+  du:"Du", au:"Au", dispo:"Disponibilité", event_id:"ID événement", synchro:"Synchro" };
+const JACT = { connexion:"Connexion", creation:"Création", modification:"Modification", suppression:"Suppression" };
+const jval = v => v === null || v === undefined || v === "" ? "vide" : /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? fr(String(v)) : String(v);
+function jdetail(r) {
+  if (r.action === "connexion") return "Ouverture de l'application";
+  if (r.action === "creation") return r.objet === "fiche" ? "Nouvelle fiche" : "Nouvelle tournée";
+  if (r.action === "suppression") return (r.objet === "fiche" ? "Fiche supprimée" : "Tournée supprimée") + (r.details && r.details.ref ? " (" + r.details.ref + ")" : "");
+  return Object.entries(r.details || {}).map(([k, v]) => k === "hist"
+      ? "Historique : " + (String(v.apres || "").split("\n")[0].slice(0, 90) || "modifié")
+      : (JLABEL[k] || k) + " : " + jval(v.avant) + " → " + jval(v.apres)).join(" · ");
+}
+const jdate = s => { const d = new Date(s); return d.toLocaleDateString("fr-BE") + " " + d.toLocaleTimeString("fr-BE", { hour: "2-digit", minute: "2-digit" }); };
+async function loadJournal() { try { S.journal = await SupaStore.journal(S.jf); } catch (e) { S.journal = []; toast("Journal indisponible : " + e.message); } }
+function journalPanel() {
+  const J = S.journal || [], f = S.jf, emails = (S.users || []).map(u => u.email);
+  return `<section class="panel span-12"><h2><span class="lbl">Journal d'activité</span><span class="demo-note" style="margin:0">${J.length >= 500 ? "500 dernières lignes" : J.length + " ligne(s)"}</span></h2>
+    <div class="filters">
+      <select id="jf-type" aria-label="Type d'action"><option value="">Toutes les actions</option>${Object.entries(JACT).map(([k, v]) => `<option value="${k}" ${f.type === k ? "selected" : ""}>${v}s</option>`).join("")}</select>
+      <select id="jf-email" aria-label="Utilisateur"><option value="">Tous les utilisateurs</option>${emails.map(e => `<option ${f.email === e ? "selected" : ""}>${esc(e)}</option>`).join("")}</select>
+      <select id="jf-days" aria-label="Période"><option value="1" ${f.days === "1" ? "selected" : ""}>Dernières 24 h</option><option value="7" ${f.days === "7" ? "selected" : ""}>7 derniers jours</option><option value="30" ${f.days === "30" ? "selected" : ""}>30 derniers jours</option><option value="90" ${f.days === "90" ? "selected" : ""}>90 derniers jours</option><option value="" ${!f.days ? "selected" : ""}>Tout</option></select>
+      ${f.rec ? `<span class="chip">${f.recObj === "tournee" ? "Tournée" : "Fiche"} : ${esc(f.recLabel || f.rec)} <button class="btn small ghost" id="jf-rec-clear" aria-label="Retirer le filtre">✕</button></span>` : ""}
+      <button class="btn small" id="j-refresh">Actualiser</button><button class="btn small" id="j-export">Exporter (CSV)</button>
+    </div>
+    <div class="tablewrap"><table><thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Objet</th><th>Détail</th></tr></thead><tbody>
+    ${J.map(r => `<tr style="cursor:default"><td class="num" style="white-space:nowrap">${jdate(r.at)}</td><td>${esc(r.email || "?")}</td>
+      <td><span class="al ${r.action === "suppression" ? "crit" : r.action === "connexion" ? "" : "info"}">${JACT[r.action] || esc(r.action)}</span></td>
+      <td>${r.objet === "session" ? "" : (r.objet === "fiche" && r.action !== "suppression" ? `<button class="btn small ghost" data-open-f="${esc(r.record_id)}">${esc(r.libelle || "Fiche")}</button>` : esc((r.objet === "tournee" ? "Tournée " : "") + (r.libelle || "")))}</td>
+      <td style="min-width:260px">${esc(jdetail(r))}</td></tr>`).join("") || `<tr><td colspan="5" class="empty">Aucune activité sur cette période.</td></tr>`}
+    </tbody></table></div></section>`;
+}
+function journalCsv() {
+  const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+  const lines = [["Date","Utilisateur","Action","Objet","Détail"].map(q).join(";")].concat((S.journal || []).map(r => [jdate(r.at), r.email, JACT[r.action] || r.action, r.libelle || "", jdetail(r)].map(q).join(";")));
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
+  a.download = "Journal_Suivi_RDV_" + isoToday() + ".csv"; document.body.appendChild(a); a.click(); a.remove();
 }
 async function loadUsers() { try { S.users = await SupaStore.listUsers(); } catch (e) { S.users = []; toast("Liste des utilisateurs indisponible : " + e.message); } }
 function applyReadOnly() {
@@ -790,7 +839,7 @@ function render() {
   const m = document.getElementById("mode"); if (m) { m.textContent = S.access === "lecture" ? "LECTURE SEULE" : "EN LIGNE"; m.classList.toggle("live", S.access !== "lecture"); }
   window.scrollTo(0, sc);
 }
-function go(view) { if (view === "setup" && SupaStore.isAdmin()) loadUsers().then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } render(); window.scrollTo(0,0); }
+function go(view) { if (view === "setup" && SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal()]).then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } render(); window.scrollTo(0,0); }
 function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.sel = id; S.draft = {...f}; S.view = "fiches"; render(); }
 function newFiche() { S.sel = "__new"; S.draft = { id:"", soc:"", contact:"", tel:"", mail:"", adr:"", pays:"", zone:"", statut:"Prospect", prio:2, objet:"", consigne:"",
   resp:"Vit'Admin", etape:ETAPES[0], nb:0, last:"", relance:"", dateRDV:"", heure:"", duree:"", lieu:"", agenda:"", hist:"", entree:"", modif:"" }; render(); setTimeout(() => document.getElementById("d-soc")?.focus(), 0); }
@@ -837,6 +886,10 @@ $app.addEventListener("click", async e => {
   const ud = t.closest("[data-udel]"); if (ud) { const em = ud.dataset.udel;
     if (S.confirmUDel !== em) { S.confirmUDel = em; render(); return; }
     try { await SupaStore.removeUser(em); S.confirmUDel = null; await loadUsers(); toast("Accès retiré : " + em); render(); } catch (err) { toast("Retrait impossible : " + err.message); } return; }
+  if (t.id === "fiche-journal") { S.jf = { type: "", email: "", days: "", rec: S.draft.id, recObj: "fiche", recLabel: S.draft.soc }; S.sel = null; S.draft = null; go("setup"); return; }
+  if (t.id === "jf-rec-clear") { S.jf.rec = null; S.jf.recLabel = ""; await loadJournal(); render(); return; }
+  if (t.id === "j-refresh") { await loadJournal(); render(); toast("Journal actualisé"); return; }
+  if (t.id === "j-export") { journalCsv(); return; }
   if (t.id === "print-list") { printList(); return; }
   if (t.id === "print-fiche") { readDraft(); printFiche(S.draft); return; }
   if (t.id === "export") { csvExport(); toast("Export CSV téléchargé"); return; }
@@ -883,6 +936,8 @@ $app.addEventListener("change", async e => {
     return; }
   const t = e.target, map = { "f-etape":"etape", "f-pays":"pays", "f-prio":"prio", "f-resp":"resp", "f-alerte":"alerte" };
   if (map[t.id]) { S.flt[map[t.id]] = t.value; saveUi(); render(); }
+  const jmap = { "jf-type":"type", "jf-email":"email", "jf-days":"days" };
+  if (jmap[t.id]) { S.jf[jmap[t.id]] = t.value; await loadJournal(); render(); return; }
   if (t.dataset && t.dataset.urole) { try { await SupaStore.setUser(t.dataset.urole, t.value); await loadUsers(); toast("Rôle mis à jour"); render(); } catch (err) { toast("Modification impossible : " + err.message); } return; }
   if (t.id === "f-open") { S.flt.open = t.checked ? "1" : ""; saveUi(); render(); }
   if (t.dataset && t.dataset.k) { readDraft(); }
@@ -915,7 +970,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && S.sel) { S
 function boot2() {
   if (S.needsLogin || S.notMember || boot2.done) return; boot2.done = true;
   if (!S.fiches.length) S.view = "setup";
-  if (SupaStore.isAdmin()) loadUsers().then(() => { if (S.view === "setup") render(); });
+  if (SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal()]).then(() => { if (S.view === "setup") render(); });
   SupaStore.live((table, p) => {
     const map = table === "fiches" ? COLS : TCOLS, list = table === "fiches" ? S.fiches : S.tournees;
     if (p.eventType === "DELETE") { const i = list.findIndex(x => x.id === p.old.id); if (i >= 0) list.splice(i, 1); }

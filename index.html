@@ -161,7 +161,7 @@ fieldset legend{padding:0;margin-bottom:8px}
 .spec code{font-size:12px;background:var(--surface-2);padding:1px 4px;border-radius:2px}
 .steps{margin:0;padding-left:20px;display:grid;gap:6px}
 .ag-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-.ag-head h2{margin:0 8px;font-size:20px;color:var(--ink);text-transform:capitalize;min-width:170px}
+.ag-head h2{margin:0 8px;font-size:20px;color:var(--ink);min-width:170px}
 .ag-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line);background:var(--surface)}
 .ag-dow{padding:6px 8px;font-family:var(--f-cond);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--label);border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--surface-2)}
 .ag-cell{min-height:108px;padding:4px 6px 6px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:3px;min-width:0}
@@ -173,6 +173,29 @@ fieldset legend{padding:0;margin-bottom:8px}
 .ag-chip.done{border-left-color:var(--ok);background:var(--surface-2);color:var(--muted)}
 .ag-chip b{font-variant-numeric:tabular-nums}
 .ag-list{margin-top:16px}
+.ag-num{border:0;background:none;cursor:pointer;font:inherit}
+.ag-head .seg{margin-left:4px}
+.tg-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:4px}
+.tg{display:grid;min-width:720px}
+.tg-wrap.day .tg{min-width:0}
+.tg-corner{border-bottom:1px solid var(--line)}
+.tg-dh{border:0;border-left:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--surface-2);padding:8px 6px;font-family:var(--f-cond);font-weight:600;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--label);cursor:pointer;text-align:center}
+.tg-dh b{font-family:var(--f-body);font-size:15px;color:var(--ink);letter-spacing:0}
+.tg-dh.today b{background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:0 7px}
+.tg-ad{border-left:1px solid var(--line);border-bottom:1px solid var(--line);padding:3px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.tg-lbl{border-left:0;font-size:11px;color:var(--muted);justify-content:center;padding-right:6px;text-align:right}
+.tg-hours{position:relative}
+.tg-hours span{position:absolute;right:6px;transform:translateY(-50%);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tg-hours span:first-child{transform:none}
+.tg-col{position:relative;border-left:1px solid var(--line);background-image:repeating-linear-gradient(to bottom,var(--line) 0,var(--line) 1px,transparent 1px,transparent 48px)}
+.tg-col.today{background-color:var(--accent-soft)}
+.tg-ev{position:absolute;overflow:hidden;text-align:left;border:0;border-left:3px solid var(--accent);background:var(--surface);box-shadow:0 0 0 1px var(--accent-soft) inset;border-radius:3px;padding:3px 6px;font-size:12px;color:var(--ink);display:flex;flex-direction:column;gap:1px;line-height:1.25}
+.tg-ev{background:var(--accent-soft)}
+.tg-ev.done{border-left-color:var(--ok);background:var(--surface-2);color:var(--muted)}
+.tg-soc{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tg-sub{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px}
+.tg-now{position:absolute;left:0;right:0;height:2px;background:var(--crit);pointer-events:none}
+@media (max-width:760px){.tg-wrap:not(.day){display:none}}
 @media (max-width:760px){.ag-grid{display:none}}
 #print{display:none}
 @media print{
@@ -431,6 +454,7 @@ const Store = CONFIG.mode === "supabase" ? SupaStore : DemoStore;
 const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], view: "dash", role: "DM", sel: null, draft: null,
   flt: { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1" }, sort: ["relance", 1] };
 try { const p = JSON.parse(localStorage.getItem("mgh-suivi-rdv-ui") || "{}"); if (p.role) S.role = p.role; if (p.flt) Object.assign(S.flt, p.flt); } catch (e) {}
+try { S.agMode = localStorage.getItem("mgh-ag-mode") || "mois"; } catch (e) {}
 const saveUi = () => { try { localStorage.setItem("mgh-suivi-rdv-ui", JSON.stringify({ role: S.role, flt: S.flt })); } catch (e) {} };
 const $app = document.getElementById("app");
 function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 2200); }
@@ -646,29 +670,60 @@ function readTDraft() { document.querySelectorAll("[data-tk]").forEach(el => { S
 const MOIS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
 const agRdv = () => S.fiches.filter(f => f.dateRDV && (f.etape === ETAPES[3] || f.etape === ETAPES[4]))
   .sort((a, b) => (a.dateRDV + (a.heure || "")).localeCompare(b.dateRDV + (b.heure || "")));
+const H0 = 7, H1 = 20, HPX = 48;
+const JOURS_L = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
+const mondayOf = iso => { const [y, m, d] = iso.split("-").map(Number); return addDays(iso, -((new Date(y, m - 1, d).getDay() + 6) % 7)); };
+const minOf = h => { if (!h) return null; const [a, b] = h.split(":").map(Number); return a * 60 + (b || 0); };
+function agChip(f) { return `<button class="ag-chip ${f.etape === ETAPES[4] ? "done" : ""}" data-open="${esc(f.id)}" title="${esc((f.heure || "") + " " + f.soc + (f.lieu ? " · " + f.lieu : ""))}"><b>${esc(f.heure || "--:--")}</b> ${esc(f.soc)}</button>`; }
+function agRow(f, showDay) { return `<button class="row" data-open="${esc(f.id)}"><span class="r-date num">${showDay ? dow(f.dateRDV) + " " + f.dateRDV.slice(8,10) + "/" + f.dateRDV.slice(5,7) : esc(f.heure || "heure ?")}<small>${showDay ? esc(f.heure || "heure ?") : ""}${f.duree ? (showDay ? " · " : "") + esc(f.duree) + " h" : ""}</small></span>
+  <span style="min-width:0"><span class="r-soc">${esc(f.soc)}</span><span class="r-sub">${esc([f.contact, f.lieu, f.lieu === "Sur site client" || !f.lieu ? f.adr : "", zoneTxt(f)].filter(Boolean).join(" · "))}</span></span>
+  <span>${pill(f.etape)}</span></button>`; }
+function timeGrid(days, detailed) {
+  const all = agRdv(), today = isoToday(), now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
+  const hours = []; for (let h = H0; h <= H1; h++) hours.push(h);
+  const head = `<div class="tg-corner"></div>` + days.map((d, i) => `<button class="tg-dh ${d === today ? "today" : ""}" data-ag-day="${d}">${JOURS_L[(new Date(+d.slice(0,4), +d.slice(5,7) - 1, +d.slice(8)).getDay() + 6) % 7].slice(0, detailed ? 20 : 3)}${detailed ? "" : "."} <b>${Number(d.slice(8))}</b>${detailed ? " " + MOIS[Number(d.slice(5,7)) - 1] : ""}</button>`).join("");
+  const untimed = days.map(d => all.filter(f => f.dateRDV === d && minOf(f.heure) === null));
+  const allday = untimed.some(L => L.length) ? `<div class="tg-lbl tg-ad">sans heure</div>` + untimed.map(L => `<div class="tg-ad">${L.map(agChip).join("")}</div>`).join("") : "";
+  const cols = days.map(d => {
+    const ev = all.filter(f => f.dateRDV === d && minOf(f.heure) !== null).map(f => { const s = minOf(f.heure), e = s + Math.round((+f.duree || 2) * 60); return { f, s, e }; }).sort((a, b) => a.s - b.s);
+    const lanes = []; ev.forEach(x => { let i = lanes.findIndex(end => end <= x.s); if (i < 0) { i = lanes.length; lanes.push(0); } lanes[i] = x.e; x.lane = i; });
+    const n = Math.max(1, lanes.length);
+    const blocks = ev.map(x => { const top = Math.max(0, (x.s - H0 * 60) / 60 * HPX), h = Math.max(24, (Math.min(x.e, (H1 + 1) * 60) - Math.max(x.s, H0 * 60)) / 60 * HPX), f = x.f;
+      const fin = pad(Math.floor(x.e / 60) % 24) + ":" + pad(x.e % 60);
+      return `<button class="tg-ev ${f.etape === ETAPES[4] ? "done" : ""}" data-open="${esc(f.id)}" style="top:${top}px;height:${h - 2}px;left:calc(${x.lane / n * 100}% + 2px);width:calc(${100 / n}% - 4px)">
+        <b class="num">${esc(f.heure)}–${fin}</b> <span class="tg-soc">${esc(f.soc)}</span>${h >= 44 ? `<span class="tg-sub">${esc([detailed ? f.contact : "", f.lieu === "Sur site client" || !f.lieu ? (f.adr || "") : f.lieu].filter(Boolean).join(" · "))}</span>` : ""}${detailed && h >= 70 && f.objet ? `<span class="tg-sub">${esc(f.objet)}</span>` : ""}</button>`; }).join("");
+    const nowLine = d === today && nowMin >= H0 * 60 && nowMin <= (H1 + 1) * 60 ? `<div class="tg-now" style="top:${(nowMin - H0 * 60) / 60 * HPX}px"></div>` : "";
+    return `<div class="tg-col ${d === today ? "today" : ""}" style="height:${(H1 - H0 + 1) * HPX}px">${blocks}${nowLine}</div>`; }).join("");
+  const lbls = `<div class="tg-hours" style="height:${(H1 - H0 + 1) * HPX}px">${hours.map(h => `<span style="top:${(h - H0) * HPX}px">${pad(h)}:00</span>`).join("")}</div>`;
+  return `<div class="tg" style="grid-template-columns:56px repeat(${days.length}, minmax(0,1fr))">${head}${allday}${lbls}${cols}</div>`;
+}
 function viewAgenda() {
-  const today = isoToday(); if (!S.agMonth) S.agMonth = today.slice(0, 7);
-  const [y, m] = S.agMonth.split("-").map(Number);
-  const first = new Date(y, m - 1, 1), offset = (first.getDay() + 6) % 7, days = new Date(y, m, 0).getDate();
-  const start = addDays(S.agMonth + "-01", -offset), cells = Math.ceil((offset + days) / 7) * 7;
-  const all = agRdv(), byDay = {}; all.forEach(f => { (byDay[f.dateRDV] = byDay[f.dateRDV] || []).push(f); });
-  const month = all.filter(f => f.dateRDV.startsWith(S.agMonth));
-  const chip = f => `<button class="ag-chip ${f.etape === ETAPES[4] ? "done" : ""}" data-open="${esc(f.id)}" title="${esc((f.heure || "") + " " + f.soc + (f.lieu ? " · " + f.lieu : ""))}"><b>${esc(f.heure || "--:--")}</b> ${esc(f.soc)}</button>`;
-  let grid = ["lun.","mar.","mer.","jeu.","ven.","sam.","dim."].map(d => `<div class="ag-dow">${d}</div>`).join("");
-  for (let i = 0; i < cells; i++) {
-    const d = addDays(start, i), L = byDay[d] || [];
-    grid += `<div class="ag-cell ${d.slice(0, 7) !== S.agMonth ? "out" : ""} ${i % 7 >= 5 ? "we" : ""} ${d === today ? "today" : ""}"><span class="ag-num">${Number(d.slice(8))}</span>${L.map(chip).join("")}</div>`;
+  const today = isoToday(); if (!S.agDate) S.agDate = today; const mode = S.agMode || "mois", D = S.agDate;
+  const all = agRdv(); let title = "", body = "", list = [], listTitle = "";
+  if (mode === "mois") {
+    const ym = D.slice(0, 7), [y, m] = ym.split("-").map(Number), first = new Date(y, m - 1, 1), offset = (first.getDay() + 6) % 7, days = new Date(y, m, 0).getDate();
+    const start = addDays(ym + "-01", -offset), cells = Math.ceil((offset + days) / 7) * 7, byDay = {};
+    all.forEach(f => { (byDay[f.dateRDV] = byDay[f.dateRDV] || []).push(f); });
+    let grid = ["lun.","mar.","mer.","jeu.","ven.","sam.","dim."].map(d => `<div class="ag-dow">${d}</div>`).join("");
+    for (let i = 0; i < cells; i++) { const d = addDays(start, i), L = byDay[d] || [];
+      grid += `<div class="ag-cell ${d.slice(0, 7) !== ym ? "out" : ""} ${i % 7 >= 5 ? "we" : ""} ${d === today ? "today" : ""}"><button class="ag-num" data-ag-day="${d}" aria-label="Voir le ${fr(d)}">${Number(d.slice(8))}</button>${L.map(agChip).join("")}</div>`; }
+    title = MOIS[m - 1] + " " + y; body = `<div class="ag-grid">${grid}</div>`;
+    list = all.filter(f => f.dateRDV.startsWith(ym)); listTitle = "RDV du mois";
+  } else if (mode === "semaine") {
+    const mon = mondayOf(D), days = Array.from({ length: 7 }, (_, i) => addDays(mon, i)), sun = days[6];
+    title = "Semaine " + isoWeek(mon) + " · " + Number(mon.slice(8)) + (mon.slice(5,7) !== sun.slice(5,7) ? " " + MOIS[Number(mon.slice(5,7)) - 1] : "") + " au " + Number(sun.slice(8)) + " " + MOIS[Number(sun.slice(5,7)) - 1];
+    body = `<div class="tg-wrap">${timeGrid(days, false)}</div>`; list = all.filter(f => f.dateRDV >= mon && f.dateRDV <= sun); listTitle = "RDV de la semaine";
+  } else {
+    const [y, m, d] = D.split("-").map(Number); title = JOURS_L[(new Date(y, m - 1, d).getDay() + 6) % 7] + " " + d + " " + MOIS[m - 1] + " " + y;
+    body = `<div class="tg-wrap day">${timeGrid([D], true)}</div>`; list = all.filter(f => f.dateRDV === D); listTitle = "RDV du jour";
   }
+  const seg = ["mois","semaine","jour"].map(k => `<button data-ag-mode="${k}" aria-pressed="${mode === k}">${k[0].toUpperCase() + k.slice(1)}</button>`).join("");
   return `<div class="ag-head">
-      <button class="btn small" id="ag-prev" aria-label="Mois précédent">◀</button><h2>${MOIS[m - 1]} ${y}</h2><button class="btn small" id="ag-next" aria-label="Mois suivant">▶</button>
-      <button class="btn small" id="ag-today">Aujourd'hui</button>
-      <span class="count num">${month.filter(f => f.etape === ETAPES[3]).length} RDV fixé(s) · ${month.filter(f => f.etape === ETAPES[4]).length} réalisé(s)</span>
-    </div>
-    <div class="ag-grid">${grid}</div>
-    <section class="panel ag-list"><h2><span class="lbl">RDV du mois</span></h2><div class="rows">${month.length ? month.map(f => `
-      <button class="row" data-open="${esc(f.id)}"><span class="r-date num">${dow(f.dateRDV)} ${f.dateRDV.slice(8,10)}/${f.dateRDV.slice(5,7)}<small>${esc(f.heure || "heure ?")}${f.duree ? " · " + esc(f.duree) + " h" : ""}</small></span>
-      <span style="min-width:0"><span class="r-soc">${esc(f.soc)}</span><span class="r-sub">${esc([f.contact, f.lieu, f.lieu === "Sur site client" || !f.lieu ? f.adr : "", zoneTxt(f)].filter(Boolean).join(" · "))}</span></span>
-      <span>${pill(f.etape)}</span></button>`).join("") : `<p class="empty">Aucun RDV ce mois-ci.</p>`}</div></section>`;
+      <button class="btn small" id="ag-prev" aria-label="Précédent">◀</button><h2>${esc(title.charAt(0).toUpperCase() + title.slice(1))}</h2><button class="btn small" id="ag-next" aria-label="Suivant">▶</button>
+      <button class="btn small" id="ag-today">Aujourd'hui</button><span class="seg">${seg}</span>
+      <span class="count num">${list.filter(f => f.etape === ETAPES[3]).length} RDV fixé(s) · ${list.filter(f => f.etape === ETAPES[4]).length} réalisé(s)</span>
+    </div>${body}
+    <section class="panel ag-list"><h2><span class="lbl">${listTitle}</span></h2><div class="rows">${list.length ? list.map(f => agRow(f, mode !== "jour")).join("") : `<p class="empty">Aucun RDV sur cette période.</p>`}</div></section>`;
 }
 function outlookUrl(f) {
   const [y, m, d] = f.dateRDV.split("-").map(Number), [hh, mm] = (f.heure || "08:00").split(":").map(Number);
@@ -935,8 +990,13 @@ $app.addEventListener("click", async e => {
   if (t.id === "jf-rec-clear") { S.jf.rec = null; S.jf.recLabel = ""; await loadJournal(); render(); return; }
   if (t.id === "j-refresh") { await loadJournal(); render(); toast("Journal actualisé"); return; }
   if (t.id === "j-export") { journalCsv(); return; }
-  if (t.id === "ag-prev" || t.id === "ag-next") { const [y, m] = S.agMonth.split("-").map(Number), n = new Date(y, m - 1 + (t.id === "ag-next" ? 1 : -1), 1); S.agMonth = n.getFullYear() + "-" + pad(n.getMonth() + 1); render(); return; }
-  if (t.id === "ag-today") { S.agMonth = isoToday().slice(0, 7); render(); return; }
+  if (t.id === "ag-prev" || t.id === "ag-next") { const dir = t.id === "ag-next" ? 1 : -1, mode = S.agMode || "mois", D = S.agDate || isoToday();
+    if (mode === "mois") { const [y, m] = D.split("-").map(Number), n = new Date(y, m - 1 + dir, 1); S.agDate = n.getFullYear() + "-" + pad(n.getMonth() + 1) + "-01"; }
+    else S.agDate = addDays(D, dir * (mode === "semaine" ? 7 : 1));
+    render(); return; }
+  if (t.id === "ag-today") { S.agDate = isoToday(); render(); return; }
+  const am = t.closest("[data-ag-mode]"); if (am) { S.agMode = am.dataset.agMode; try { localStorage.setItem("mgh-ag-mode", S.agMode); } catch (e) {} render(); return; }
+  const ad = t.closest("[data-ag-day]"); if (ad) { S.agDate = ad.dataset.agDay; S.agMode = "jour"; render(); return; }
   if (t.id === "outlook-web") { readDraft(); const d = S.draft;
     if (!d.dateRDV) { toast("Indiquez d'abord la date du RDV"); document.getElementById("d-dateRDV").focus(); return; }
     window.open(outlookUrl(d), "_blank", "noopener"); toast("Outlook ouvert : vérifiez puis cliquez sur Envoyer"); return; }

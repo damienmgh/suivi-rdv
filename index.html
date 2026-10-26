@@ -819,6 +819,7 @@ function viewOffres() {
       <select id="of-resp" aria-label="Responsable">${opts(RESP, F.resp, "Tous responsables")}</select>
       <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="of-open" ${F.open === "1" ? "checked" : ""}> Masquer commandes, perdues, sans suite</label>
       <button class="btn small" id="of-reset">Effacer</button>
+      <button class="btn small" id="oprint-list">Imprimer la liste</button>
       <span class="count num">${L.length} offre(s) · ${eur(tot) || "0,00 €"} HT en cours</span>
     </div>
     <div class="tablewrap"><table>
@@ -899,7 +900,7 @@ function oSheet() {
       </fieldset>
     </div>
     <div class="sheet-f"><span class="stamp">${o.modif ? "Modifiée le " + esc(o.modif) : "Non enregistrée"}</span>
-      <span style="display:flex;gap:8px;flex-wrap:wrap">${o.id && SupaStore.isAdmin() ? (S.confirmODel === o.id ? `<button class="btn small" id="odel-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="odel-no">Garder</button>` : `<button class="btn small ghost" id="odel" style="color:var(--crit)">Supprimer</button>`) : ""}${o.id && SupaStore.isAdmin() ? `<button class="btn small ghost" id="ojournal">Modifications</button>` : ""}<button class="btn small" id="ocancel">Annuler</button><button class="btn primary small" id="osave">Enregistrer</button></span></div>
+      <span style="display:flex;gap:8px;flex-wrap:wrap">${o.id && SupaStore.isAdmin() ? (S.confirmODel === o.id ? `<button class="btn small" id="odel-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="odel-no">Garder</button>` : `<button class="btn small ghost" id="odel" style="color:var(--crit)">Supprimer</button>`) : ""}${o.id && SupaStore.isAdmin() ? `<button class="btn small ghost" id="ojournal">Modifications</button>` : ""}<button class="btn small" id="oprint">Imprimer</button><button class="btn small" id="ocancel">Annuler</button><button class="btn primary small" id="osave">Enregistrer</button></span></div>
   </aside>`;
 }
 function readODraft() { document.querySelectorAll("[data-ok]").forEach(el => { S.odraft[el.dataset.ok] = el.type === "number" ? (el.value === "" ? "" : +el.value) : el.value; }); }
@@ -1268,6 +1269,29 @@ function printTour(x) {
     (P.length ? `<table class="p-table"><colgroup><col style="width:5%"><col style="width:25%"><col style="width:9%"><col style="width:15%"><col style="width:14%"><col style="width:9%"><col style="width:23%"></colgroup><thead><tr><th>Prio</th><th>Société / contact</th><th>Zone</th><th>Téléphone</th><th>Étape</th><th>Relance</th><th>Objet</th></tr></thead><tbody>${pRows}</tbody></table>` : "<p>Aucune fiche à placer.</p>") +
     `<p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "portrait");
 }
+function printOffresList() {
+  const L = oFiltered(), F = S.oflt, t = isoToday();
+  const ouv = L.filter(o => !oClosed(o)), sum = X => X.reduce((a, o) => a + (+o.montantHT || 0), 0);
+  const crit = [F.q && "recherche « " + F.q + " »", F.statut, F.alerte && (F.alerte === "*" ? "avec alerte" : F.alerte), F.resp, F.open === "1" && !F.statut && "commandes, perdues et sans suite masquées"].filter(Boolean);
+  const rows = L.map(o => `<tr><td><b>${esc(o.soc)}</b>${o.contact ? "<br>" + esc(o.contact) : ""}</td><td>${esc(o.num)}<br>${fr(o.dateOffre)}</td>
+    <td>${esc(o.objet)}</td><td style="text-align:right;white-space:nowrap">${eur(o.montantHT)}</td><td>${esc(o.statut)}</td><td>${esc(oAlerte(o))}</td>
+    <td>${fr(o.appel)}</td><td>${fr(o.relance)}</td><td>${fr(o.target)}</td><td>${esc(o.resp)}</td></tr>`).join("");
+  doPrint(printHead("Suivi des offres · liste", "Imprimée le " + fr(t) + " · " + L.length + " offre(s) · " + (eur(sum(ouv)) || "0,00 €") + " HT en cours" + (crit.length ? " · " + crit.join(", ") : "")) +
+    `<table class="p-table"><colgroup><col style="width:15%"><col style="width:9%"><col style="width:22%"><col style="width:9%"><col style="width:11%"><col style="width:9%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:7%"></colgroup><thead><tr><th>Société / contact</th><th>N° / date</th><th>Objet</th><th>Montant HT</th><th>Statut</th><th>Alerte</th><th>Dernier appel</th><th>Relance</th><th>Target</th><th>Resp.</th></tr></thead><tbody>${rows}</tbody></table>` +
+    `<p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "landscape");
+}
+function printOffre(o) {
+  const kv = (k, v, full) => v === "" || v === null || v === undefined ? "" : `<div class="${full ? "p-full" : ""}"><b>${k}</b><span>${esc(v)}</span></div>`;
+  let lignes = []; try { lignes = JSON.parse(o.lignes || "[]"); } catch (e) {}
+  const fiche = S.fiches.find(f => String(f.id) === String(o.ficheId));
+  doPrint(printHead(o.soc || "Offre", [o.num && "Offre n° " + o.num, o.dateOffre && "du " + fr(o.dateOffre), "imprimée le " + fr(isoToday()), o.modif && "modifiée le " + o.modif].filter(Boolean).join(" · ")) +
+    `<div class="p-sec">Suivi</div><div class="p-grid">${kv("Statut", o.statut)}${kv("Alerte", oAlerte(o))}${kv("Responsable", o.resp)}${kv("Probabilité", o.proba !== "" ? o.proba + " %" : "")}${kv("Suivi créé le", fr(o.entree))}${kv("Date target", fr(o.target))}${kv("Dernier appel", fr(o.appel))}${kv("Prochaine relance", fr(o.relance))}${kv("Commentaire / motif", o.motif, true)}</div>
+    <div class="p-sec">Offre</div><div class="p-grid">${kv("N° d'offre", o.num)}${kv("Date de l'offre", fr(o.dateOffre))}${kv("Nature", o.nature)}${kv("Validité", fr(o.validite))}${kv("Montant HT", eur(o.montantHT))}${kv("Montant TTC", eur(o.montantTTC))}${kv("Délai", o.delai)}${kv("Livraison", o.livraison)}${kv("Paiement", o.paiement)}${kv("Contact interne MGH", o.contactMgh)}${kv("N° projet", o.projet)}${kv("N° client", o.clientNum)}${kv("Objet", o.objet, true)}${kv("PDF joint", o.pdfNom)}</div>
+    ${lignes.length ? `<table class="p-table"><colgroup><col style="width:14%"><col style="width:56%"><col style="width:10%"><col style="width:20%"></colgroup><thead><tr><th>Article</th><th>Désignation</th><th>Qté</th><th>Total HT</th></tr></thead><tbody>${lignes.map(l => `<tr><td>${esc(l.code)}</td><td>${esc(l.desc)}</td><td>${esc(l.qte)}</td><td style="text-align:right">${eur(l.total)}</td></tr>`).join("")}</tbody></table>` : ""}
+    <div class="p-sec">Client</div><div class="p-grid">${kv("Société", o.soc)}${kv("Contact", o.contact)}${kv("Téléphone", o.tel)}${kv("Mail", o.mail)}${kv("Adresse", o.adr, true)}${kv("Pays / zone", [o.pays, o.zone].filter(Boolean).join(" · "))}${kv("N° TVA", o.tva)}${kv("Fiche RDV liée", fiche ? fiche.soc + (fiche.contact ? " · " + fiche.contact : "") : "")}</div>
+    <div class="p-sec">Historique</div><div class="p-hist">${esc(o.hist) || "Aucun historique."}</div>
+    <p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "portrait");
+}
 function csvExport() {
   const keys = ["ref","soc","contact","tel","mail","adr","pays","zone","statut","prio","objet","consigne","resp","etape","nb","last","relance","dateRDV","heure","duree","lieu","hist","entree"];
   const head = ["Réf.","Société","Contact","Téléphone","Mail","Adresse","Pays","Dpt / zone","Statut compte","Priorité","Objet du RDV","Consigne Damien","Responsable","Étape","Nb tentatives","Dernier contact","Prochaine relance","Date RDV","Heure","Durée (h)","Lieu / format","Historique","Date d'entrée"];
@@ -1335,6 +1359,8 @@ $app.addEventListener("click", async e => {
   const oo = t.closest("[data-open-o]"); if (oo && !(t.closest(".sheet") && S.view === "offres")) { openOffre(oo.dataset.openO); return; }
   const og = t.closest("[data-ogo-alerte],[data-ogo-statut]"); if (og) { Object.assign(S.oflt, { alerte: og.dataset.ogoAlerte || "", statut: og.dataset.ogoStatut || "", q: "" }); go("offres"); return; }
   const os = t.closest("[data-osort]"); if (os) { const k = os.dataset.osort; S.osort = [k, S.osort[0] === k ? -S.osort[1] : 1]; render(); return; }
+  if (t.id === "oprint-list") { printOffresList(); return; }
+  if (t.id === "oprint") { readODraft(); printOffre(S.odraft); return; }
   if (t.id === "of-reset") { S.oflt = { q: "", statut: "", alerte: "", resp: "", open: "1" }; render(); return; }
   if (t.id === "onew") { newOffre(); render(); setTimeout(() => document.getElementById("o-soc")?.focus(), 0); return; }
   if (t.id === "f-newoffre") { readDraft(); const f = S.draft;

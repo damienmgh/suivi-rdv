@@ -105,7 +105,7 @@ main{padding-block:20px 48px}
 .pill.e7{border-left-color:var(--crit);color:var(--crit)}
 .al{font-weight:600;font-size:13px;white-space:nowrap}
 .al.crit{color:var(--crit)}.al.warn{color:var(--warn)}.al.info{color:var(--accent)}
-.prio{font-weight:700}.prio.p1{color:var(--crit)}.prio.p2{color:var(--warn)}.prio.p3{color:var(--muted)}
+.prio{font-weight:700}.prio.p1{color:var(--crit)}.prio.p2{color:var(--warn)}.prio.p3{color:var(--muted)}.prio.p0{background:var(--crit);color:#fff;padding:1px 6px;border-radius:2px;white-space:nowrap}
 
 /* Liste des fiches */
 .split{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
@@ -543,7 +543,12 @@ function toast(msg) { const t = document.getElementById("toast"); t.textContent 
 /* ===================== Vues ===================== */
 function pill(e) { return e ? `<span class="pill e${etIdx(e)+1}">${esc(e)}</span>` : ""; }
 function alHtml(a) { return a ? `<span class="al ${ALERT_CLASS[a]}">${esc(a)}</span>` : ""; }
-function prioHtml(p) { return p ? `<span class="prio p${p}">P${p}</span>` : ""; }
+const PRIOS = [0, 1, 2, 3];
+const hasPrio = p => p !== "" && p !== null && p !== undefined && !isNaN(+p);
+const prioLbl = p => !hasPrio(p) ? "" : +p === 0 ? "P MAX" : "P" + p;
+const prioRank = p => hasPrio(p) ? +p : 9;
+function prioOpts(cur, all) { return `<option value="">${all}</option>` + PRIOS.map(v => `<option value="${v}" ${hasPrio(cur) && +cur === v ? "selected" : ""}>${prioLbl(v)}</option>`).join(""); }
+function prioHtml(p) { return hasPrio(p) ? `<span class="prio p${+p}">${prioLbl(p)}</span>` : ""; }
 const zoneTxt = f => [f.pays, f.zone].filter(Boolean).join(" · ");
 
 function viewDash() {
@@ -625,9 +630,9 @@ function filtered() {
     (S.flt.open !== "1" || S.flt.etape || !closed(f)));
   const [k, dir] = S.sort;
   const val = f => k === "alerte" ? (alerte(f) ? ALERTS.findIndex(a => a[0] === alerte(f)) : 99)
-    : k === "etape" ? etIdx(f.etape) : k === "prio" ? (+f.prio || 9)
+    : k === "etape" ? etIdx(f.etape) : k === "prio" ? prioRank(f.prio)
     : k === "rdv" ? (f.dateRDV || "9999") : k === "relance" ? (f.relance || "9999") : String(f[k] || "").toLowerCase();
-  return L.sort((a,b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * dir || (+a.prio||9) - (+b.prio||9); });
+  return L.sort((a,b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * dir || prioRank(a.prio) - prioRank(b.prio); });
 }
 function opts(list, cur, all) { return `<option value="">${all}</option>` + list.map(v => `<option ${String(cur) === String(v) ? "selected" : ""} value="${esc(v)}">${esc(v)}</option>`).join(""); }
 
@@ -642,7 +647,7 @@ function viewFiches() {
         <select id="f-etape" aria-label="Étape">${opts(ETAPES, S.flt.etape, "Toutes étapes")}</select>
         <select id="f-alerte" aria-label="Alerte"><option value="">Toutes alertes</option><option value="*" ${S.flt.alerte === "*" ? "selected" : ""}>Avec alerte</option>${ALERTS.map(([a]) => `<option ${S.flt.alerte === a ? "selected" : ""}>${esc(a)}</option>`).join("")}</select>
         <select id="f-pays" aria-label="Pays">${opts(PAYS, S.flt.pays, "Tous pays")}</select>
-        <select id="f-prio" aria-label="Priorité">${opts([1,2,3], S.flt.prio, "Toutes priorités")}</select>
+        <select id="f-prio" aria-label="Priorité">${prioOpts(S.flt.prio, "Toutes priorités")}</select>
         <select id="f-resp" aria-label="Responsable">${opts(RESP, S.flt.resp, "Tous responsables")}</select>
         <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="f-open" ${S.flt.open === "1" ? "checked" : ""}> Masquer réalisés / refus</label>
         <button class="btn small" id="f-reset">Effacer</button>
@@ -690,7 +695,7 @@ function sheet() {
       </div></div>
       <fieldset><legend class="lbl">Pilotage</legend>
         ${sel("etape","Étape",ETAPES)}${sel("resp","Responsable",RESP)}
-        ${sel("prio","Priorité",[1,2,3])}${inp("nb","Nb tentatives","number")}
+        <div class="f"><label for="d-prio">Priorité</label><select id="d-prio" data-k="prio">${prioOpts(f.prio, "…")}</select></div>${inp("nb","Nb tentatives","number")}
         ${inp("last","Dernier contact","date")}${inp("relance","Prochaine relance","date")}
         ${ta("objet","Objet du RDV")}${ta("consigne","Consigne Damien")}
       </fieldset>
@@ -732,7 +737,7 @@ function aPlacer(x) {
   if (!toks.length) return [];
   return S.fiches.filter(f => !closed(f) && f.etape !== ETAPES[3] && f.zone && toks.some(w => {
       const z = String(f.zone).toLowerCase(); return /^\d+$/.test(w) ? z === w.padStart(2, "0") : z.includes(w) || w.includes(z); }))
-    .sort((a, b) => (+a.prio || 9) - (+b.prio || 9) || (a.relance || "9").localeCompare(b.relance || "9"));
+    .sort((a, b) => prioRank(a.prio) - prioRank(b.prio) || (a.relance || "9").localeCompare(b.relance || "9"));
 }
 function viewTournees() {
   const t = isoToday();
@@ -1204,9 +1209,9 @@ function printHead(title, sub) {
 }
 function printList() {
   const L = filtered(), F = S.flt;
-  const crit = [F.q && "recherche « " + F.q + " »", F.etape, F.alerte && (F.alerte === "*" ? "avec alerte" : F.alerte), F.pays, F.prio && "priorité " + F.prio, F.resp, F.open === "1" && !F.etape && "réalisés et refus masqués"].filter(Boolean);
+  const crit = [F.q && "recherche « " + F.q + " »", F.etape, F.alerte && (F.alerte === "*" ? "avec alerte" : F.alerte), F.pays, F.prio && "priorité " + prioLbl(F.prio), F.resp, F.open === "1" && !F.etape && "réalisés et refus masqués"].filter(Boolean);
   const rows = L.map(f => `<tr><td><b>${esc(f.soc)}</b>${f.ref ? "<br><span style='color:#6B6E74'>" + esc(f.ref) + "</span>" : ""}</td><td>${esc(f.contact)}</td><td>${esc(f.tel)}</td>
-    <td>${esc([f.pays, f.zone].filter(Boolean).join(" · "))}</td><td>${f.prio ? "P" + esc(f.prio) : ""}</td><td>${esc(f.etape)}</td><td>${esc(alerte(f))}</td>
+    <td>${esc([f.pays, f.zone].filter(Boolean).join(" · "))}</td><td>${esc(prioLbl(f.prio))}</td><td>${esc(f.etape)}</td><td>${esc(alerte(f))}</td>
     <td>${fr(f.relance)}</td><td>${f.dateRDV ? fr(f.dateRDV) + " " + esc(f.heure) : ""}</td><td>${esc(f.resp)}</td><td>${esc(f.objet)}</td></tr>`).join("");
   doPrint(printHead("Suivi des rendez-vous · liste des fiches", "Imprimé le " + fr(isoToday()) + " · " + L.length + " fiche(s)" + (crit.length ? " · " + crit.join(", ") : "")) +
     `<table class="p-table"><colgroup><col style="width:17%"><col style="width:11%"><col style="width:10%"><col style="width:6%"><col style="width:4%"><col style="width:10%"><col style="width:8%"><col style="width:7%"><col style="width:8%"><col style="width:6%"><col style="width:13%"></colgroup><thead><tr><th>Société</th><th>Contact</th><th>Téléphone</th><th>Zone</th><th>Prio</th><th>Étape</th><th>Alerte</th><th>Relance</th><th>RDV</th><th>Resp.</th><th>Objet</th></tr></thead><tbody>${rows}</tbody></table>` +
@@ -1216,7 +1221,7 @@ function printFiche(f) {
   const kv = (k, v, full) => v === "" || v === null || v === undefined ? "" : `<div class="${full ? "p-full" : ""}"><b>${k}</b><span>${esc(v)}</span></div>`;
   doPrint(printHead(f.soc || "Fiche", [f.ref, "Imprimée le " + fr(isoToday()), f.modif && "modifiée le " + f.modif].filter(Boolean).join(" · ")) +
     `<div class="p-sec">Société et contact</div><div class="p-grid">${kv("Contact", f.contact)}${kv("Statut", f.statut)}${kv("Téléphone", f.tel)}${kv("Mail", f.mail)}${kv("Adresse", f.adr, true)}${kv("Pays / zone", [f.pays, f.zone].filter(Boolean).join(" · "))}</div>
-    <div class="p-sec">Pilotage</div><div class="p-grid">${kv("Étape", f.etape)}${kv("Alerte", alerte(f))}${kv("Priorité", f.prio ? "P" + f.prio : "")}${kv("Responsable", f.resp)}${kv("Nb tentatives", f.nb)}${kv("Dernier contact", fr(f.last))}${kv("Prochaine relance", fr(f.relance))}${kv("Date d'entrée", fr(f.entree))}${kv("Objet du RDV", f.objet, true)}${kv("Consigne Damien", f.consigne, true)}</div>
+    <div class="p-sec">Pilotage</div><div class="p-grid">${kv("Étape", f.etape)}${kv("Alerte", alerte(f))}${kv("Priorité", prioLbl(f.prio))}${kv("Responsable", f.resp)}${kv("Nb tentatives", f.nb)}${kv("Dernier contact", fr(f.last))}${kv("Prochaine relance", fr(f.relance))}${kv("Date d'entrée", fr(f.entree))}${kv("Objet du RDV", f.objet, true)}${kv("Consigne Damien", f.consigne, true)}</div>
     ${f.dateRDV ? `<div class="p-sec">Rendez-vous</div><div class="p-grid">${kv("Date", fr(f.dateRDV) + " (" + dow(f.dateRDV) + ")")}${kv("Heure", f.heure)}${kv("Durée", f.duree ? f.duree + " h" : "")}${kv("Lieu / format", f.lieu)}</div>` : ""}
     <div class="p-sec">Historique</div><div class="p-hist">${esc(f.hist) || "Aucun historique."}</div>
     <p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "portrait");
@@ -1227,7 +1232,7 @@ function printTour(x) {
   const rdvRows = Rv.map(f => `<tr><td><b>${dow(f.dateRDV)} ${fr(f.dateRDV)}</b><br>${esc(f.heure || "heure ?")}${f.duree ? " · " + esc(f.duree) + " h" : ""}</td>
     <td><b>${esc(f.soc)}</b><br>${esc(f.contact)}</td><td>${esc(f.tel)}<br>${esc(f.mail)}</td><td>${esc(f.lieu === "Sur site client" || !f.lieu ? f.adr : f.lieu)}</td>
     <td>${esc(f.objet)}${f.consigne ? "<br><i>" + esc(f.consigne) + "</i>" : ""}</td></tr>`).join("");
-  const pRows = P.map(f => `<tr><td>${f.prio ? "P" + esc(f.prio) : ""}</td><td><b>${esc(f.soc)}</b><br>${esc(f.contact)}</td><td>${esc([f.pays, f.zone].filter(Boolean).join(" · "))}</td>
+  const pRows = P.map(f => `<tr><td>${esc(prioLbl(f.prio))}</td><td><b>${esc(f.soc)}</b><br>${esc(f.contact)}</td><td>${esc([f.pays, f.zone].filter(Boolean).join(" · "))}</td>
     <td>${esc(f.tel)}</td><td>${esc(f.etape)}</td><td>${fr(f.relance)}</td><td>${esc(f.objet)}</td></tr>`).join("");
   doPrint(printHead("Tournée " + x.zone, "S" + isoWeek(x.du) + " · " + per + (x.dispo ? " · " + x.dispo : "") + " · imprimée le " + fr(isoToday())) +
     (x.consigne ? `<div class="p-sec">Consigne</div><div class="p-hist">${esc(x.consigne)}</div>` : "") +
@@ -1241,7 +1246,7 @@ function csvExport() {
   const keys = ["ref","soc","contact","tel","mail","adr","pays","zone","statut","prio","objet","consigne","resp","etape","nb","last","relance","dateRDV","heure","duree","lieu","hist","entree"];
   const head = ["Réf.","Société","Contact","Téléphone","Mail","Adresse","Pays","Dpt / zone","Statut compte","Priorité","Objet du RDV","Consigne Damien","Responsable","Étape","Nb tentatives","Dernier contact","Prochaine relance","Date RDV","Heure","Durée (h)","Lieu / format","Historique","Date d'entrée"];
   const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
-  const lines = [head.map(q).join(";")].concat(S.fiches.map(f => keys.map(k => q(f[k])).join(";")));
+  const lines = [head.map(q).join(";")].concat(S.fiches.map(f => keys.map(k => q(k === "prio" ? prioLbl(f[k]) : f[k])).join(";")));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
   a.download = "Suivi_RDV_" + isoToday() + ".csv"; document.body.appendChild(a); a.click(); a.remove();

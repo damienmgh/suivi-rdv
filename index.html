@@ -500,6 +500,8 @@ const SupaStore = {
     if (error) throw new Error(error.message);
     const i = state.tournees.findIndex(x => String(x.id) === String(id)); if (i >= 0) state.tournees.splice(i, 1);
   },
+  async param(cle) { const { data, error } = await this.client().from("parametres").select("valeur,updated_at").eq("cle", cle).maybeSingle(); if (error) throw new Error(error.message); return data; },
+  async setParam(cle, valeur) { const { error } = await this.client().from("parametres").upsert({ cle, valeur, updated_at: new Date().toISOString(), updated_by: this.user }); if (error) throw new Error(error.message); },
   async listUsers() { const { data, error } = await this.client().from("app_users").select("email,role").order("email"); if (error) throw new Error(error.message); return data; },
   async setUser(email, role) { const { error } = await this.client().from("app_users").upsert({ email: email.toLowerCase().trim(), role }); if (error) throw new Error(error.message); },
   async removeUser(email) { const { error } = await this.client().from("app_users").delete().eq("email", email); if (error) throw new Error(error.message); },
@@ -1107,6 +1109,7 @@ function viewSetup() {
       </form>
     </section>
     ${SupaStore.isAdmin() ? usersPanel() : ""}
+    ${SupaStore.isAdmin() ? sauvegardePanel() : ""}
     ${SupaStore.isAdmin() ? journalPanel() : ""}
     <section class="panel span-6 w"><h2><span class="lbl">Import initial (une seule fois)</span></h2>
       <p class="demo-note" style="margin:0 0 8px">Sélectionnez <code>import_fiches_SuiviRDV.json</code>. ${S.fiches.length ? "<b>La base contient déjà " + S.fiches.length + " fiches : un nouvel import créerait des doublons.</b>" : ""}</p>
@@ -1173,6 +1176,29 @@ function journalCsv() {
   const lines = [["Date","Utilisateur","Action","Objet","Détail"].map(q).join(";")].concat((S.journal || []).map(r => [jdate(r.at), r.email, JACT[r.action] || r.action, r.libelle || "", jdetail(r)].map(q).join(";")));
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
   a.download = "Journal_Suivi_RDV_" + isoToday() + ".csv"; document.body.appendChild(a); a.click(); a.remove();
+}
+const FREQS = [["quotidienne","Chaque jour"],["ouvres","Jours ouvrés (lundi à vendredi)"],["hebdomadaire","Chaque semaine"],["mensuelle","Chaque mois (le 1er)"]];
+const JOURS_L7 = ["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"];
+const SAUV_REPO = "https://github.com/damienmgh/suivi-rdv-sauvegardes";
+async function loadSauvegarde() {
+  try { const [r, d] = await Promise.all([SupaStore.param("sauvegarde"), SupaStore.param("sauvegarde_derniere")]);
+    S.sauv = { reglage: Object.assign({ frequence: "hebdomadaire", jour: 1 }, r && r.valeur || {}), derniere: d && d.valeur, ko: "" }; }
+  catch (e) { S.sauv = { reglage: { frequence: "hebdomadaire", jour: 1 }, derniere: null, ko: e.message }; }
+}
+function sauvegardePanel() {
+  const v = S.sauv; if (!v) return `<section class="panel span-6"><h2><span class="lbl">Sauvegarde automatique</span></h2><p class="empty">Chargement…</p></section>`;
+  const g = v.reglage, d = v.derniere;
+  const der = d ? `${jdate(d.date)} · ${d.tables && d.tables.fiches || 0} fiches · ${d.tables && d.tables.offres || 0} offres · ${(d.pdf && (d.pdf.nouveaux + d.pdf.deja_sauvegardes)) || 0} PDF${d.ok === false ? " · <b style='color:var(--crit)'>PDF manquants, voir le dépôt</b>" : ""}` : "Aucune sauvegarde effectuée pour l'instant.";
+  return `<section class="panel span-6"><h2><span class="lbl">Sauvegarde automatique</span><a class="btn ghost small" href="${SAUV_REPO}" target="_blank" rel="noopener">Voir les sauvegardes</a></h2>
+    ${v.ko ? `<p class="demo-note" style="margin:0 0 10px">Réglage indisponible : ${esc(v.ko)}</p>` : ""}
+    <form id="sform" style="display:grid;grid-template-columns:minmax(0,1fr) 160px auto;gap:8px;align-items:end">
+      <div class="f"><label for="s-freq">Fréquence</label><select id="s-freq">${FREQS.map(([k, l]) => `<option value="${k}" ${g.frequence === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div class="f"><label for="s-jour">Jour</label><select id="s-jour" ${g.frequence === "hebdomadaire" ? "" : "disabled"}>${[1,2,3,4,5,6,0].map(j => `<option value="${j}" ${+g.jour === j ? "selected" : ""}>${JOURS_L7[j]}</option>`).join("")}</select></div>
+      <button class="btn primary small" type="submit">Enregistrer</button>
+    </form>
+    <div class="rows" style="margin-top:12px"><div class="row" style="grid-template-columns:150px minmax(0,1fr);cursor:default"><span class="lbl">Dernière</span><span>${der}</span></div></div>
+    <p class="demo-note" style="margin:10px 0 0">Lancement vers 6 h (7 h en heure d'été). Fiches, offres, tournées, utilisateurs, journal et PDF des offres sont copiés dans un dépôt GitHub privé, sans effacer les sauvegardes précédentes.</p>
+  </section>`;
 }
 async function loadUsers() { try { S.users = await SupaStore.listUsers(); } catch (e) { S.users = []; toast("Liste des utilisateurs indisponible : " + e.message); } }
 function applyReadOnly() {
@@ -1292,7 +1318,7 @@ function render() {
   const m = document.getElementById("mode"); if (m) { m.textContent = S.access === "lecture" ? "LECTURE SEULE" : "EN LIGNE"; m.classList.toggle("live", S.access !== "lecture"); }
   window.scrollTo(0, sc);
 }
-function go(view) { if (view === "setup" && SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal()]).then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } if (view !== "offres") { S.osel = null; S.odraft = null; S.opendingFile = null; } render(); window.scrollTo(0,0); }
+function go(view) { if (view === "setup" && SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal(), loadSauvegarde()]).then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } if (view !== "offres") { S.osel = null; S.odraft = null; S.opendingFile = null; } render(); window.scrollTo(0,0); }
 function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.back = S.view === "agenda" ? "agenda" : S.view === "offres" && S.osel ? "offres" : null; S.sel = id; S.draft = {...f}; S.view = "fiches"; render(); }
 function newFiche() { S.sel = "__new"; S.draft = { id:"", soc:"", contact:"", tel:"", mail:"", adr:"", pays:"", zone:"", statut:"Prospect", prio:2, objet:"", consigne:"",
   resp:"Vit'Admin", etape:ETAPES[0], nb:0, last:"", relance:"", dateRDV:"", heure:"", duree:"", lieu:"", agenda:"", hist:"", entree:"", modif:"" }; render(); setTimeout(() => document.getElementById("d-soc")?.focus(), 0); }
@@ -1445,6 +1471,7 @@ $app.addEventListener("change", async e => {
   if ((e.target.id === "o-import" || e.target.id === "o-file") && e.target.files[0]) { const attach = e.target.id === "o-file"; if (attach) readODraft(); await importOffrePdf(e.target.files[0], attach); return; }
   const omap = { "of-statut":"statut", "of-alerte":"alerte", "of-resp":"resp" };
   if (omap[e.target.id]) { S.oflt[omap[e.target.id]] = e.target.value; render(); return; }
+  if (e.target.id === "s-freq") { const j = document.getElementById("s-jour"); if (j) j.disabled = e.target.value !== "hebdomadaire"; return; }
   if (e.target.id === "of-open") { S.oflt.open = e.target.checked ? "1" : ""; render(); return; }
   if (e.target.dataset && e.target.dataset.ok) { readODraft(); if (e.target.dataset.ok === "ficheId") render(); return; }
   const t = e.target, map = { "f-etape":"etape", "f-pays":"pays", "f-prio":"prio", "f-resp":"resp", "f-alerte":"alerte" };
@@ -1469,6 +1496,10 @@ $app.addEventListener("submit", async e => {
   if (e.target.id === "login") { e.preventDefault(); const em = document.getElementById("l-email").value.trim(); S.lastEmail = em;
     try { await SupaStore.login(em, document.getElementById("l-pass").value); S.loginMsg = ""; Object.assign(S, await Store.load()); boot2(); }
     catch (err) { S.loginMsg = "Connexion impossible : " + err.message; } render(); return; }
+  if (e.target.id === "sform") { e.preventDefault(); const frequence = document.getElementById("s-freq").value, jour = +document.getElementById("s-jour").value;
+    try { await SupaStore.setParam("sauvegarde", { frequence, jour }); S.sauv.reglage = { frequence, jour }; S.sauv.ko = ""; render();
+      toast("Sauvegarde : " + FREQS.find(f => f[0] === frequence)[1].toLowerCase() + (frequence === "hebdomadaire" ? ", le " + JOURS_L7[jour] : "")); }
+    catch (err) { toast("Réglage impossible : " + err.message); } return; }
   if (e.target.id === "uform") { e.preventDefault(); const em = document.getElementById("u-email").value.trim().toLowerCase(), ro = document.getElementById("u-role").value;
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { toast("Adresse e-mail non valide"); return; }
     try { await SupaStore.setUser(em, ro); await loadUsers(); toast(em + " autorisé (" + (ro === "lecture" ? "lecture seule" : "modification") + ")"); render(); } catch (err) { toast("Ajout impossible : " + err.message); } return; }
@@ -1494,7 +1525,7 @@ document.addEventListener("keydown", e => { if (e.key !== "Escape") return;
 function boot2() {
   if (S.needsLogin || S.notMember || boot2.done) return; boot2.done = true;
   if (!S.fiches.length) S.view = "setup";
-  if (SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal()]).then(() => { if (S.view === "setup") render(); });
+  if (SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal(), loadSauvegarde()]).then(() => { if (S.view === "setup") render(); });
   SupaStore.live((table, p) => {
     const map = table === "fiches" ? COLS : table === "offres" ? OCOLS : TCOLS, list = table === "fiches" ? S.fiches : table === "offres" ? S.offres : S.tournees;
     if (p.eventType === "DELETE") { const i = list.findIndex(x => x.id === p.old.id); if (i >= 0) list.splice(i, 1); }

@@ -198,6 +198,22 @@ fieldset legend{padding:0;margin-bottom:8px}
 @media (max-width:760px){.tg-wrap:not(.day){display:none}}
 @media (max-width:760px){.ag-grid{display:none}}
 #print{display:none}
+.pill.o1{border-left-color:var(--accent);color:var(--accent)}
+.pill.o2{border-left-color:var(--warn);color:var(--warn)}
+.pill.o3{background:var(--accent);color:var(--accent-ink)}
+.pill.o4{background:var(--ok);color:#fff}
+.pill.o5{border-left-color:var(--crit);color:var(--crit)}
+.pill.o6{border-left-color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.kpi{border:1px solid var(--line);border-radius:3px;padding:10px 12px;background:var(--surface-2);text-align:left;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+.kpi b{display:block;font-family:var(--f-cond);font-size:24px;color:var(--ink);text-transform:none;letter-spacing:0}
+@media (max-width:700px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.drop{border:2px dashed var(--line);border-radius:4px;padding:12px 14px;color:var(--muted);font-size:14px;margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.drop.over{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.filebtn{position:relative;overflow:hidden;cursor:pointer}.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}
+.lines{width:100%;border-collapse:collapse;font-size:13px}.lines th,.lines td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.lines .n{text-align:right;white-space:nowrap}
+.att{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.adr-row{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
 @media print{
   body::before,header.top,main,#toast{display:none!important}
   :root{padding:0!important}
@@ -233,6 +249,7 @@ fieldset legend{padding:0;margin-bottom:8px}
     <nav class="tabs" role="tablist" aria-label="Vues">
       <button role="tab" data-view="dash" id="tab-dash">Tableau de bord</button>
       <button role="tab" data-view="fiches" id="tab-fiches">Fiches</button>
+      <button role="tab" data-view="offres" id="tab-offres">Offres</button>
       <button role="tab" data-view="agenda" id="tab-agenda">Agenda</button>
       <button role="tab" data-view="setup" id="tab-setup">Compte</button>
     </nav>
@@ -265,6 +282,12 @@ const ALERTS = [
   ["Relance due","crit"],["RDV passé : clôturer","crit"],["Date RDV manquante","crit"],
 ["Fixer date relance","warn"],["Sans suivi > 30 j","warn"],["RDV sous 7 jours","info"]];
 const ALERT_CLASS = Object.fromEntries(ALERTS);
+const OSTATUTS = ["1-Offre envoyée","2-Suivi en cours","3-Négociation","4-Commande reçue","5-Perdue","6-Sans suite"];
+const NATURES = ["Révision","Réducteur neuf","Réparation / service","Pièces / divers","Contrat de service","Formation"];
+const OALERTS = [["Relance due","crit"],["Target dépassée","crit"],["Validité expirée","warn"],["Fixer date relance","warn"],["Target sous 7 jours","info"]];
+const OALERT_CLASS = Object.fromEntries(OALERTS);
+const PROBAS = [10,25,50,75,90];
+const PAYS_NOM = { BE:"Belgique", FR:"France", LU:"Luxembourg", NL:"Pays-Bas", DE:"Allemagne" };
 
 /* ===================== Outils dates ===================== */
 const pad = n => String(n).padStart(2,"0");
@@ -293,6 +316,30 @@ function alerte(f) {
   return "";
 }
 const etIdx = e => Math.max(0, ETAPES.indexOf(e));
+const oClosed = o => o.statut === OSTATUTS[3] || o.statut === OSTATUTS[4] || o.statut === OSTATUTS[5];
+function oAlerte(o) {
+  if (oClosed(o)) return "";
+  const t = isoToday();
+  if (o.relance && o.relance <= t) return "Relance due";
+  if (o.target && o.target < t) return "Target dépassée";
+  if (o.validite && o.validite < t) return "Validité expirée";
+  if (!o.relance) return "Fixer date relance";
+  if (o.target && diffDays(o.target, t) <= 7) return "Target sous 7 jours";
+  return "";
+}
+const eur = n => n === "" || n === null || n === undefined || isNaN(+n) ? "" : (+n).toLocaleString("fr-BE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+function mapsUrl(x) {
+  const q = x.adr ? x.adr + (x.pays ? ", " + (PAYS_NOM[x.pays] || x.pays) : "") : [x.soc, x.zone, PAYS_NOM[x.pays] || x.pays].filter(Boolean).join(" ");
+  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q);
+}
+const normSoc = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .replace(/\b(sa|sas|srl|sprl|nv|bv|gmbh|sarl|scrl|bvba|ag|spa|ltd|group|groupe)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+function ficheCands(o) {
+  const a = normSoc(o.soc); if (!a) return [];
+  const w = a.split(" ").filter(x => x.length >= 3)[0] || a;
+  return S.fiches.filter(f => { const b = normSoc(f.soc); if (!b) return false; const bw = b.split(" ").filter(x => x.length >= 3)[0] || b; return b.includes(w) || a.includes(bw); })
+    .sort((x, y) => String(x.soc).localeCompare(String(y.soc)));
+}
 const closed = f => f.etape === ETAPES[4] || f.etape === ETAPES[6];
 
 /* ===================== Stockage : démo ===================== */
@@ -340,7 +387,12 @@ const COLS = { soc:"soc", ref:"ref", contact:"contact", tel:"tel", mail:"mail", 
   prio:"prio", objet:"objet", consigne:"consigne", resp:"resp", etape:"etape", nb:"nb", last:"last", relance:"relance",
   dateRDV:"date_rdv", heure:"heure", duree:"duree", lieu:"lieu", agenda:"agenda", hist:"hist", entree:"entree" };
 const TCOLS = { du:"du", au:"au", zone:"zone", dispo:"dispo", consigne:"consigne" };
-const NUMS = ["prio","nb","duree"], DATES = ["last","relance","dateRDV","entree","du","au"];
+const OCOLS = { num:"num", dateOffre:"date_offre", clientNum:"client_num", projet:"projet", soc:"soc", contact:"contact", tel:"tel", mail:"mail",
+  adr:"adr", pays:"pays", zone:"zone", tva:"tva", nature:"nature", objet:"objet", lignes:"lignes", montantHT:"montant_ht", montantTTC:"montant_ttc",
+  validite:"validite", paiement:"paiement", livraison:"livraison", delai:"delai", contactMgh:"contact_mgh", statut:"statut", resp:"resp",
+  target:"date_target", appel:"dernier_appel", relance:"relance", proba:"proba", motif:"motif", ficheId:"fiche_id", hist:"hist",
+  pdfPath:"pdf_path", pdfNom:"pdf_nom", entree:"entree" };
+const NUMS = ["prio","nb","duree","montantHT","montantTTC","proba","ficheId"], DATES = ["last","relance","dateRDV","entree","du","au","dateOffre","validite","target","appel"];
 let sb = null;
 const SupaStore = {
   user: "",
@@ -379,7 +431,9 @@ const SupaStore = {
     const { data: role } = await this.client().rpc("my_role");
     this.client().rpc("log_connexion").then(() => {}, () => {});
     const [a, b] = await Promise.all([this.all("fiches"), this.all("tournees")]);
-    return { fiches: a.map(r => this.fromDb(r, COLS)), tournees: b.map(r => this.fromDb(r, TCOLS)), needsLogin: false, notMember: false,
+    let offres = [], offresKo = "";
+    try { offres = (await this.all("offres")).map(r => this.fromDb(r, OCOLS)); } catch (e) { offresKo = e.message; }
+    return { fiches: a.map(r => this.fromDb(r, COLS)), tournees: b.map(r => this.fromDb(r, TCOLS)), offres, offresKo, needsLogin: false, notMember: false,
       access: role === "lecture" ? "lecture" : "editeur" };
   },
   async upsert(table, map, o) {
@@ -402,6 +456,31 @@ const SupaStore = {
     if (i >= 0) state.tournees[i] = saved; else state.tournees.push(saved);
     return saved;
   },
+  async saveOffre(o, state) {
+    if (!o.id) delete o.entree;
+    const saved = await this.upsert("offres", OCOLS, o);
+    const i = state.offres.findIndex(x => String(x.id) === String(saved.id));
+    if (i >= 0) state.offres[i] = saved; else state.offres.unshift(saved);
+    return saved;
+  },
+  async deleteOffre(o, state) {
+    const { error } = await this.client().from("offres").delete().eq("id", o.id);
+    if (error) throw new Error(error.message);
+    if (o.pdfPath) this.removePdf(o.pdfPath);
+    const i = state.offres.findIndex(x => String(x.id) === String(o.id)); if (i >= 0) state.offres.splice(i, 1);
+  },
+  async uploadPdf(file, id) {
+    const safe = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w.-]+/g, "_").slice(-80);
+    const path = id + "/" + Date.now() + "_" + safe;
+    const { error } = await this.client().storage.from("offres").upload(path, file, { contentType: file.type || "application/pdf", upsert: false });
+    if (error) throw new Error("envoi du PDF : " + error.message);
+    return path;
+  },
+  async pdfUrl(path) {
+    const { data, error } = await this.client().storage.from("offres").createSignedUrl(path, 600);
+    if (error) throw new Error(error.message); return data.signedUrl;
+  },
+  removePdf(path) { this.client().storage.from("offres").remove([path]).then(() => {}, () => {}); },
   async login(email, password) {
     const { error } = await this.client().auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.message === "Invalid login credentials" ? "adresse ou mot de passe incorrect" : error.message);
@@ -445,13 +524,15 @@ const SupaStore = {
   },
   live(onChange) {
     this.client().channel("suivi").on("postgres_changes", { event: "*", schema: "public", table: "fiches" }, p => onChange("fiches", p))
-      .on("postgres_changes", { event: "*", schema: "public", table: "tournees" }, p => onChange("tournees", p)).subscribe();
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournees" }, p => onChange("tournees", p))
+      .on("postgres_changes", { event: "*", schema: "public", table: "offres" }, p => onChange("offres", p)).subscribe();
   }
 };
 const Store = CONFIG.mode === "supabase" ? SupaStore : DemoStore;
 
 /* ===================== État de l'interface ===================== */
-const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], view: "dash", role: "DM", sel: null, draft: null,
+const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], offres: [], osel: null, odraft: null, opendingFile: null,
+  oflt: { q: "", statut: "", alerte: "", resp: "", open: "1" }, osort: ["relance", 1], view: "dash", role: "DM", sel: null, draft: null,
   flt: { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1" }, sort: ["relance", 1] };
 try { const p = JSON.parse(localStorage.getItem("mgh-suivi-rdv-ui") || "{}"); if (p.role) S.role = p.role; if (p.flt) Object.assign(S.flt, p.flt); } catch (e) {}
 try { S.agMode = localStorage.getItem("mgh-ag-mode") || "mois"; } catch (e) {}
@@ -486,6 +567,7 @@ function viewDash() {
       <h2><span class="lbl" id="h-al">Alertes à traiter</span></h2>
       <div class="alerts">${al.map(([a,c,n]) => `<button class="chip ${c} ${n ? "" : "zero"}" data-goto-alerte="${esc(a)}"><b class="num">${n}</b>${esc(a)}</button>`).join("")}</div>
     </section>
+    ${dashOffres()}
     <section class="panel span-7" aria-labelledby="h-ag">
       <h2><span class="lbl" id="h-ag">Agenda · RDV fixés à venir</span><button class="btn ghost small" data-view-go="agenda">Ouvrir l'agenda</button></h2>
       <div class="rows">${agenda.length ? agenda.map(f => `
@@ -505,6 +587,31 @@ function viewDash() {
         </button>`).join("") : `<p class="empty">Aucune relance dans les 7 jours.</p>`}</div>
     </section>
   </div>`;
+}
+function dashOffres() {
+  if (S.offresKo) return "";
+  const O = S.offres, ouv = O.filter(o => !oClosed(o)), t = isoToday();
+  const sum = L => L.reduce((s, o) => s + (+o.montantHT || 0), 0);
+  const won = O.filter(o => o.statut === OSTATUTS[3]);
+  const al = OALERTS.map(([a, c]) => [a, c, ouv.filter(o => oAlerte(o) === a).length]);
+  const rank = o => { const a = oAlerte(o); return a ? OALERTS.findIndex(x => x[0] === a) : 9; };
+  const L = [...ouv].sort((a, b) => rank(a) - rank(b) || (a.relance || a.target || "9").localeCompare(b.relance || b.target || "9")).slice(0, 8);
+  return `<section class="panel span-12" aria-labelledby="h-of">
+      <h2><span class="lbl" id="h-of">Suivi des offres</span><button class="btn ghost small" data-view-go="offres">Ouvrir les offres</button></h2>
+      <div class="kpis">
+        <button class="kpi" data-ogo-statut=""><b class="num">${ouv.length}</b>Offres en cours</button>
+        <button class="kpi" data-ogo-statut=""><b class="num">${eur(sum(ouv)) || "0,00 €"}</b>Montant HT en cours</button>
+        <button class="kpi" data-ogo-statut="${esc(OSTATUTS[3])}"><b class="num">${won.length}</b>Commandes reçues</button>
+        <button class="kpi" data-ogo-statut="${esc(OSTATUTS[3])}"><b class="num">${eur(sum(won)) || "0,00 €"}</b>Montant HT commandé</button>
+      </div>
+      <div class="alerts" style="margin-bottom:12px">${al.map(([a, c, n]) => `<button class="chip ${c} ${n ? "" : "zero"}" data-ogo-alerte="${esc(a)}"><b class="num">${n}</b>${esc(a)}</button>`).join("")}</div>
+      <div class="rows">${L.length ? L.map(o => { const a = oAlerte(o), tg = a === "Target dépassée" || (!o.relance && o.target), d = tg ? o.target : o.relance; return `
+        <button class="row" data-open-o="${esc(o.id)}">
+          <span class="r-date num" style="${a && OALERT_CLASS[a] === "crit" ? "color:var(--crit)" : ""}">${d ? fr(d).slice(0, 5) : "--/--"}<small>${!d ? "à planifier" : tg ? (o.target < t ? "target dépassée" : "target") : o.relance < t ? "relance en retard" : "relance"}</small></span>
+          <span style="min-width:0"><span class="r-soc">${esc(o.soc)}</span><span class="r-sub">${esc([o.num && "n° " + o.num, eur(o.montantHT) && eur(o.montantHT) + " HT", o.objet].filter(Boolean).join(" · "))}</span></span>
+          <span>${opill(o.statut)}</span>
+        </button>`; }).join("") : `<p class="empty">Aucune offre en cours. Importez une offre de vente dans l'onglet Offres.</p>`}</div>
+    </section>`;
 }
 const rdvIn = x => S.fiches.filter(f => f.etape === ETAPES[3] && f.dateRDV && f.dateRDV >= x.du && f.dateRDV <= (x.au || x.du)).length;
 
@@ -597,15 +704,26 @@ function sheet() {
         <div class="hist" style="margin-top:6px">${esc(f.hist) || "<span style='color:var(--muted)'>Aucun historique.</span>"}</div></div>
       <fieldset><legend class="lbl">Société et contact</legend>
         ${inp("soc","Société","text","full")}${inp("contact","Contact")}${sel("statut","Statut compte",["Client","Prospect","Ancien client"])}
-        ${inp("tel","Téléphone","tel")}${inp("mail","Mail","email")}${inp("adr","Adresse","text","full")}
+        ${inp("tel","Téléphone","tel")}${inp("mail","Mail","email")}
+        <div class="adr-row">${inp("adr","Adresse")}<button class="btn small" id="maps" type="button" title="Ouvrir l'adresse dans Google Maps">Localiser (Google Maps)</button></div>
         ${sel("pays","Pays",PAYS)}${inp("zone","Dpt / zone")}
       </fieldset>
+      ${f.id ? ficheOffres(f) : ""}
     </div>
     <div class="sheet-f"><span class="stamp">${f.modif ? "Modifié le " + esc(f.modif) : "Non enregistré"}</span>
       <span style="display:flex;gap:8px">${f.id && SupaStore.isAdmin() ? (S.confirmDel === f.id ? `<button class="btn small" id="del-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="del-no">Garder</button>` : `<button class="btn small ghost" id="del" style="color:var(--crit)">Supprimer</button>`) : ""}${f.id && SupaStore.isAdmin() ? `<button class="btn small ghost" id="fiche-journal">Modifications</button>` : ""}<button class="btn small" id="print-fiche">Imprimer</button><button class="btn small" id="cancel">Annuler</button><button class="btn primary small" id="save">Enregistrer</button></span></div>
   </aside>`;
 }
 
+function ficheOffres(f) {
+  const L = S.offres.filter(o => String(o.ficheId) === String(f.id)).sort((a, b) => String(b.dateOffre || b.entree).localeCompare(String(a.dateOffre || a.entree)));
+  return `<div><div class="lbl" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px">Offres liées (${L.length})
+      <button class="btn small w" id="f-newoffre" type="button">+ Offre pour ce client</button></div>
+    <div class="rows">${L.map(o => `<button class="row" data-open-o="${esc(o.id)}" style="grid-template-columns:92px minmax(0,1fr) auto">
+      <span class="r-date num">${fr(o.dateOffre || o.entree).slice(0, 5)}<small>${esc(o.num || "")}</small></span>
+      <span style="min-width:0"><span class="r-soc">${esc(eur(o.montantHT) ? eur(o.montantHT) + " HT" : o.nature || "Offre")}</span><span class="r-sub">${esc(o.objet)}</span></span>
+      <span>${opill(o.statut)}</span></button>`).join("") || `<p class="empty">Aucune offre liée à cette fiche.</p>`}</div></div>`;
+}
 const rdvsIn = x => S.fiches.filter(f => f.etape === ETAPES[3] && f.dateRDV && f.dateRDV >= x.du && f.dateRDV <= (x.au || x.du))
   .sort((a, b) => (a.dateRDV + a.heure).localeCompare(b.dateRDV + b.heure));
 const STOP = ["de","du","des","la","le","les","et","zone","nord","sud","est","ouest","centre","region","région","dpt","semaine"];
@@ -667,6 +785,231 @@ function tourSheet() {
   </aside>`;
 }
 function readTDraft() { document.querySelectorAll("[data-tk]").forEach(el => { S.tdraft[el.dataset.tk] = el.value; }); }
+const opill = s => s ? `<span class="pill o${OSTATUTS.indexOf(s) + 1}">${esc(s)}</span>` : "";
+const oalHtml = a => a ? `<span class="al ${OALERT_CLASS[a]}">${esc(a)}</span>` : "";
+function oFiltered() {
+  const F = S.oflt, q = F.q.trim().toLowerCase();
+  const L = S.offres.filter(o => (!q || [o.soc, o.num, o.contact, o.objet, o.hist, o.projet, o.clientNum, o.nature, o.motif].join(" ").toLowerCase().includes(q)) &&
+    (!F.statut || o.statut === F.statut) && (!F.resp || o.resp === F.resp) &&
+    (!F.alerte || (F.alerte === "*" ? oAlerte(o) : oAlerte(o) === F.alerte)) && (F.open !== "1" || F.statut || !oClosed(o)));
+  const [k, dir] = S.osort;
+  const val = o => k === "alerte" ? (oAlerte(o) ? OALERTS.findIndex(a => a[0] === oAlerte(o)) : 99) : k === "montant" ? (+o.montantHT || 0)
+    : k === "statut" ? OSTATUTS.indexOf(o.statut) : ["relance","target","dateOffre"].includes(k) ? (o[k] || "9999") : String(o[k] || "").toLowerCase();
+  return L.sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * dir; });
+}
+function viewOffres() {
+  if (S.offresKo) return `<div class="panel"><b>Le suivi des offres n'est pas encore activé dans la base.</b><p class="demo-note">Damien doit exécuter le script offres.sql dans Supabase. Détail : ${esc(S.offresKo)}</p></div>`;
+  const L = oFiltered(), F = S.oflt, tot = L.filter(o => !oClosed(o)).reduce((s, o) => s + (+o.montantHT || 0), 0);
+  const th = (k, t) => `<th><button data-osort="${k}">${t}${S.osort[0] === k ? (S.osort[1] > 0 ? " ▲" : " ▼") : ""}</button></th>`;
+  return `<div class="split ${S.osel ? "open" : ""}"><div style="min-width:0">
+    <div class="drop" id="odrop"><span style="flex:1 1 260px">Glissez ici le PDF d'une offre de vente : les champs se remplissent automatiquement.</span>
+      <label class="btn small primary filebtn">Importer une offre (PDF)<input type="file" id="o-import" accept="application/pdf,.pdf"></label>
+      <button class="btn small" id="onew">+ Offre sans PDF</button></div>
+    <div class="filters">
+      <input type="search" id="oq" placeholder="Rechercher société, n° d'offre, objet, historique…" value="${esc(F.q)}" aria-label="Rechercher une offre">
+      <select id="of-statut" aria-label="Statut">${opts(OSTATUTS, F.statut, "Tous statuts")}</select>
+      <select id="of-alerte" aria-label="Alerte"><option value="">Toutes alertes</option><option value="*" ${F.alerte === "*" ? "selected" : ""}>Avec alerte</option>${OALERTS.map(([a]) => `<option ${F.alerte === a ? "selected" : ""}>${esc(a)}</option>`).join("")}</select>
+      <select id="of-resp" aria-label="Responsable">${opts(RESP, F.resp, "Tous responsables")}</select>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="of-open" ${F.open === "1" ? "checked" : ""}> Masquer commandes, perdues, sans suite</label>
+      <button class="btn small" id="of-reset">Effacer</button>
+      <span class="count num">${L.length} offre(s) · ${eur(tot) || "0,00 €"} HT en cours</span>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr>${th("alerte","Alerte")}${th("soc","Société")}${th("montant","Montant HT")}${th("statut","Statut")}${th("dateOffre","Offre du")}${th("target","Target")}${th("relance","Relance")}${th("resp","Resp.")}</tr></thead>
+      <tbody>${L.map(o => `<tr data-open-o="${esc(o.id)}" class="${String(S.osel) === String(o.id) ? "sel" : ""} ${oClosed(o) ? "closed" : ""}">
+        <td>${oalHtml(oAlerte(o))}</td>
+        <td class="soc">${esc(o.soc)}${o.pdfPath ? ` <span title="PDF joint" aria-label="PDF joint">📎</span>` : ""}<small>${esc([o.num && "n° " + o.num, o.objet].filter(Boolean).join(" · "))}</small></td>
+        <td class="num" style="white-space:nowrap">${eur(o.montantHT)}</td><td>${opill(o.statut)}</td><td class="num">${fr(o.dateOffre)}</td>
+        <td class="num" style="${o.target && o.target < isoToday() && !oClosed(o) ? "color:var(--crit);font-weight:700" : ""}">${fr(o.target)}</td>
+        <td class="num" style="${o.relance && o.relance <= isoToday() && !oClosed(o) ? "color:var(--crit);font-weight:700" : ""}">${fr(o.relance)}</td><td>${esc(o.resp)}</td></tr>`).join("")
+        || `<tr><td colspan="8" class="empty">Aucune offre. Importez le PDF d'une offre de vente pour créer le premier suivi.</td></tr>`}</tbody>
+    </table></div>
+    <div class="cards">${L.slice(0, 150).map(o => `<button class="card" data-open-o="${esc(o.id)}">
+        <span class="top-l"><span class="soc">${esc(o.soc)}</span><b class="num">${eur(o.montantHT)}</b></span>
+        <span>${opill(o.statut)} ${oalHtml(oAlerte(o))}</span>
+        <span class="meta">${o.num ? `<span>n° ${esc(o.num)}</span>` : ""}${o.relance ? `<span>Relance ${fr(o.relance)}</span>` : ""}${o.target ? `<span>Target ${fr(o.target)}</span>` : ""}</span>
+      </button>`).join("")}</div>
+  </div>${S.osel ? oSheet() : ""}</div>`;
+}
+function oSheet() {
+  const o = S.odraft; if (!o) return "";
+  const a = oAlerte(o);
+  const inp = (k, lab, type = "text", cls = "") => `<div class="f ${cls}"><label for="o-${k}">${lab}</label><input id="o-${k}" data-ok="${k}" type="${type}" ${type === "number" ? 'step="any"' : ""} value="${esc(o[k])}"></div>`;
+  const sel = (k, lab, list, cls = "") => `<div class="f ${cls}"><label for="o-${k}">${lab}</label><select id="o-${k}" data-ok="${k}">${opts(list, o[k], "…")}</select></div>`;
+  const ta = (k, lab) => `<div class="f full"><label for="o-${k}">${lab}</label><textarea id="o-${k}" data-ok="${k}" rows="2">${esc(o[k])}</textarea></div>`;
+  let lignes = []; try { lignes = JSON.parse(o.lignes || "[]"); } catch (e) {}
+  const cands = ficheCands(o), cur = S.fiches.find(f => String(f.id) === String(o.ficheId));
+  const others = S.fiches.filter(f => !cands.includes(f)).sort((x, y) => String(x.soc).localeCompare(String(y.soc)));
+  const fopt = f => `<option value="${esc(f.id)}" ${String(f.id) === String(o.ficheId) ? "selected" : ""}>${esc(f.soc + (f.contact ? " · " + f.contact : ""))}</option>`;
+  return `<aside class="sheet" aria-label="Offre">
+    <div class="sheet-h"><div><h3>${esc(o.soc || "Nouvelle offre")}</h3>
+      <small class="num">${o.num ? "Offre n° " + esc(o.num) : "Offre sans numéro"}${o.dateOffre ? " du " + fr(o.dateOffre) : ""}${o.entree ? " · suivi créé le " + fr(o.entree) : ""}</small>
+      <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">${opill(o.statut)} ${oalHtml(a)} ${eur(o.montantHT) ? `<b class="num" style="color:var(--ink)">${eur(o.montantHT)} HT</b>` : ""}</div></div>
+      <button class="btn small" id="oclose" aria-label="Fermer l'offre">Fermer</button></div>
+    <div class="sheet-b">
+      <div><div class="lbl" style="margin-bottom:6px">Actions rapides</div><div class="quick oquick">
+        <button class="btn small" data-oq="call">Appel de suivi</button>
+        <button class="btn small" data-oq="noanswer">Appel sans réponse</button>
+        <button class="btn small" data-oq="r7">Relance +7 j</button>
+        <button class="btn small" data-oq="r30">Relance +1 mois</button>
+        <button class="btn small" data-oq="nego">Négociation</button>
+        <button class="btn small" data-oq="won">Commande reçue</button>
+        <button class="btn small" data-oq="lost">Perdue</button>
+      </div></div>
+      <fieldset><legend class="lbl">Suivi</legend>
+        ${sel("statut","Statut",OSTATUTS)}${sel("resp","Responsable",RESP)}
+        ${inp("target","Date target (décision)","date")}${sel("proba","Probabilité (%)",PROBAS)}
+        ${inp("appel","Dernier appel","date")}${inp("relance","Prochaine relance","date")}
+        ${ta("motif","Commentaire / motif de perte")}
+      </fieldset>
+      <div><div class="lbl" style="margin-bottom:6px">Offre en pièce jointe</div><div class="att">
+        ${o.pdfPath ? `<button class="btn small primary" id="o-pdf" type="button">Ouvrir le PDF</button><span style="overflow-wrap:anywhere">${esc(o.pdfNom || "offre.pdf")}</span>` : ""}
+        ${S.opendingFile ? `<span style="overflow-wrap:anywhere;color:var(--warn);font-weight:600">À envoyer à l'enregistrement : ${esc(S.opendingFile.name)}</span>` : ""}
+        ${!o.pdfPath && !S.opendingFile ? `<span style="color:var(--muted)">Aucun PDF joint.</span>` : ""}
+        <label class="btn small filebtn w">${o.pdfPath || S.opendingFile ? "Remplacer le PDF" : "Joindre l'offre (PDF)"}<input type="file" id="o-file" accept="application/pdf,.pdf"></label>
+      </div></div>
+      <div><div class="lbl" style="margin-bottom:6px">Historique</div>
+        <div class="note-row onote-row"><input id="onote" placeholder="Ajouter une note datée (ex. client attend accord budget)" aria-label="Nouvelle note"><button class="btn small" id="oaddnote">Ajouter</button></div>
+        <div class="hist" style="margin-top:6px">${esc(o.hist) || "<span style='color:var(--muted)'>Aucun historique.</span>"}</div></div>
+      <fieldset><legend class="lbl">Offre</legend>
+        ${inp("num","N° d'offre")}${inp("dateOffre","Date de l'offre","date")}
+        ${sel("nature","Nature",NATURES)}${inp("validite","Validité","date")}
+        ${inp("montantHT","Montant HT (€)","number")}${inp("montantTTC","Montant TTC (€)","number")}
+        ${ta("objet","Objet")}
+        ${lignes.length ? `<div class="f full"><span class="lbl">Lignes de l'offre</span><table class="lines"><thead><tr><th>Article</th><th>Désignation</th><th class="n">Qté</th><th class="n">Total</th></tr></thead><tbody>${lignes.map(l => `<tr><td class="num">${esc(l.code)}</td><td>${esc(l.desc)}</td><td class="n num">${esc(l.qte)}</td><td class="n num">${eur(l.total)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+        ${inp("delai","Délai")}${inp("livraison","Conditions de livraison")}
+        ${inp("paiement","Conditions de paiement")}${inp("contactMgh","Contact interne MGH")}
+        ${inp("projet","N° projet")}${inp("clientNum","N° client")}
+      </fieldset>
+      <fieldset><legend class="lbl">Client</legend>
+        ${inp("soc","Société","text","full")}${inp("contact","Contact")}${inp("tel","Téléphone","tel")}
+        ${inp("mail","Mail","email")}${inp("tva","N° TVA")}
+        <div class="adr-row">${inp("adr","Adresse")}<button class="btn small" id="omaps" type="button">Localiser (Google Maps)</button></div>
+        ${sel("pays","Pays",PAYS)}${inp("zone","Dpt / zone")}
+        <div class="f full"><label for="o-ficheId">Fiche RDV liée</label><div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px">
+          <select id="o-ficheId" data-ok="ficheId"><option value="">Aucune</option>${cands.length ? `<optgroup label="Même société">${cands.map(fopt).join("")}</optgroup>` : ""}<optgroup label="Toutes les fiches">${others.map(fopt).join("")}</optgroup></select>
+          ${cur ? `<button class="btn small" id="o-openfiche" type="button">Ouvrir la fiche</button>` : ""}</div></div>
+      </fieldset>
+    </div>
+    <div class="sheet-f"><span class="stamp">${o.modif ? "Modifiée le " + esc(o.modif) : "Non enregistrée"}</span>
+      <span style="display:flex;gap:8px;flex-wrap:wrap">${o.id && SupaStore.isAdmin() ? (S.confirmODel === o.id ? `<button class="btn small" id="odel-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="odel-no">Garder</button>` : `<button class="btn small ghost" id="odel" style="color:var(--crit)">Supprimer</button>`) : ""}${o.id && SupaStore.isAdmin() ? `<button class="btn small ghost" id="ojournal">Modifications</button>` : ""}<button class="btn small" id="ocancel">Annuler</button><button class="btn primary small" id="osave">Enregistrer</button></span></div>
+  </aside>`;
+}
+function readODraft() { document.querySelectorAll("[data-ok]").forEach(el => { S.odraft[el.dataset.ok] = el.type === "number" ? (el.value === "" ? "" : +el.value) : el.value; }); }
+function onote(txt) { const d = S.odraft; d.hist = frShort(isoToday()) + " " + S.role + " : " + txt + (d.hist ? "\n" + d.hist : ""); }
+function openOffre(id) { const o = S.offres.find(x => String(x.id) === String(id)); if (!o) return; S.confirmODel = null; S.opendingFile = null; S.sel = null; S.draft = null;
+  S.osel = o.id; S.odraft = { ...o }; S.view = "offres"; render(); }
+function newOffre(pre) { const t = isoToday();
+  S.osel = "__new"; S.opendingFile = null; S.confirmODel = null; S.sel = null; S.draft = null; S.view = "offres";
+  S.odraft = Object.assign(Object.fromEntries(Object.keys(OCOLS).map(k => [k, ""])), { statut: OSTATUTS[0], resp: S.role === "DM" ? "Damien" : "Vit'Admin",
+    dateOffre: t, target: addDays(t, 30), relance: addDays(t, 7), modif: "" }, pre || {}); }
+async function importOffrePdf(file, attach) {
+  if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") { toast("Choisissez un fichier PDF"); return; }
+  if (file.size > 20 * 1048576) { toast("PDF trop volumineux (20 Mo maximum)"); return; }
+  let p = {};
+  try { toast("Lecture de l'offre…"); p = parseOffre(await pdfPages(await file.arrayBuffer())); }
+  catch (e) { toast("Lecture automatique impossible : complétez les champs à la main"); }
+  if (!attach) {
+    const dup = p.num && S.offres.find(o => o.num === p.num);
+    if (dup) { openOffre(dup.id); S.opendingFile = file; render(); toast("Offre n° " + p.num + " déjà suivie : PDF prêt à être joint, enregistrez"); return; }
+    newOffre();
+  }
+  const d = S.odraft, t = isoToday(); let n = 0;
+  const put = (k, v) => { if (v === undefined || v === null || v === "") return; if (!attach || d[k] === "" || d[k] === undefined) { d[k] = v; n++; } };
+  ["num","dateOffre","clientNum","projet","soc","contact","tel","adr","pays","zone","tva","nature","objet","montantHT","montantTTC","validite","paiement","livraison","delai","contactMgh"].forEach(k => put(k, p[k]));
+  if (p.lignes && p.lignes.length) put("lignes", JSON.stringify(p.lignes));
+  if (!attach) {
+    if (p.validite) d.target = p.validite;
+    const r = addDays(p.dateOffre || t, 7); d.relance = r < t ? t : r;
+    const c = ficheCands(d);
+    if (c.length === 1) { const f = c[0]; d.ficheId = f.id; if (f.zone) d.zone = f.zone; if (!d.mail && f.mail && (!d.contact || normSoc(f.contact) === normSoc(d.contact))) d.mail = f.mail; }
+  }
+  S.opendingFile = file; render();
+  toast(p.num ? "Offre n° " + p.num + " lue : " + n + " champ(s) rempli(s). Vérifiez puis enregistrez." : "Champs à compléter, puis enregistrez");
+}
+/* ===================== Lecture d'une offre de vente MGH (PDF) ===================== */
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  return loadPdfJs.p || (loadPdfJs.p = new Promise((ok, ko) => {
+    const s = document.createElement("script"); s.src = PDFJS + "pdf.min.js";
+    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js"; ok(window.pdfjsLib); };
+    s.onerror = () => { loadPdfJs.p = null; ko(new Error("lecteur PDF indisponible")); }; document.head.appendChild(s); }));
+}
+async function pdfPages(buf) {
+  const lib = await loadPdfJs(), doc = await lib.getDocument({ data: new Uint8Array(buf) }).promise, pages = [];
+  for (let i = 1; i <= doc.numPages; i++) { const tc = await (await doc.getPage(i)).getTextContent();
+    pages.push(tc.items.map(it => [Math.round(it.transform[4]), Math.round(it.transform[5]), Math.round(it.width || 0), it.str])); }
+  return pages;
+}
+// Regroupe les fragments de texte en lignes (même ordonnée), triées de haut en bas
+function pdfLines(items) {
+  const seen = new Set(), its = [];
+  items.forEach(([x, y, w, s]) => { s = String(s || "").replace(/\s+/g, " ").trim(); if (!s) return; const k = x + "|" + y + "|" + s; if (seen.has(k)) return; seen.add(k); its.push({ x, y, w, s }); });
+  its.sort((a, b) => b.y - a.y || a.x - b.x);
+  const lines = [];
+  its.forEach(it => { const L = lines.find(l => Math.abs(l.y - it.y) <= 2); if (L) L.items.push(it); else lines.push({ y: it.y, items: [it] }); });
+  lines.forEach(l => { l.items.sort((a, b) => a.x - b.x); l.x = l.items[0].x;
+    l.text = l.items.reduce((acc, it, i) => { if (!i) return it.s; const p = l.items[i - 1], gap = it.x - (p.x + p.w); return acc + (gap > 14 ? "   " : " ") + it.s; }, ""); });
+  return lines.sort((a, b) => b.y - a.y);
+}
+const PAYS_PDF = { BELGIUM: "BE", BELGIQUE: "BE", "BELGIË": "BE", FRANCE: "FR", LUXEMBOURG: "LU", NETHERLANDS: "NL", NEDERLAND: "NL", "PAYS-BAS": "NL", GERMANY: "DE", DEUTSCHLAND: "DE", ALLEMAGNE: "DE" };
+const numFr = s => s ? +String(s).replace(/\./g, "").replace(",", ".") : "";
+const dateFr = s => { const m = String(s || "").match(/(\d{2})-(\d{2})-(\d{2,4})/); if (!m) return ""; const y = m[3].length === 2 ? "20" + m[3] : m[3]; return y + "-" + m[2] + "-" + m[1]; };
+function parseOffre(pages) {
+  const P = pages.map(pdfLines), first = P[0] || [], o = { lignes: [] };
+  const find = (L, re) => L.find(l => re.test(l.text));
+  // En-tête : adresses de livraison (colonne gauche) et de facturation (colonne droite)
+  const hd = find(first, /Adresse de livraison/), hf = first.flatMap(l => l.items).find(i => /Adresse de facturation/.test(i.s));
+  const stop = find(first, /^Offre de vente/);
+  if (hd) {
+    const split = hf ? hf.x - 8 : 280, block = first.filter(l => l.y < hd.y && (!stop || l.y > stop.y));
+    const col = left => block.map(l => l.items.filter(i => left ? i.x < split : i.x >= split).map(i => i.s).join(" ").trim()).filter(Boolean);
+    const L = col(true), R = col(false);
+    const tel = L.find(s => /^T\.?\s*[+\d]/.test(s)); if (tel) o.tel = tel.replace(/^T\.?\s*/, "").trim();
+    const addr = L.filter(s => s !== tel);
+    o.soc = addr[0] || R[0] || "";
+    let rest = addr.slice(1);
+    if (rest.length && !/\d/.test(rest[0]) && !PAYS_PDF[rest[0].toUpperCase()]) { o.contact = rest[0]; rest = rest.slice(1); }
+    const last = rest[rest.length - 1] || ""; if (PAYS_PDF[last.toUpperCase()]) { o.pays = PAYS_PDF[last.toUpperCase()]; rest = rest.slice(0, -1); }
+    o.adr = rest.join(", ");
+    const cp = rest.find(s => /^\d{4,5}\s/.test(s)); if (cp) { o.cp = cp.match(/^\d{4,5}/)[0]; if (o.pays === "FR") o.zone = o.cp.slice(0, 2); else o.zone = cp.replace(/^\d{4,5}\s+/, "").replace(/\b\w+/g, w => w[0] + w.slice(1).toLowerCase()); }
+    const tva = R.join(" ").match(/\b([A-Z]{2}\s?[0-9A-Z]{8,12})\b(?!.*\b[A-Z]{2}\s?[0-9A-Z]{8,12}\b)/); if (tva && /\d{6}/.test(tva[1])) o.tva = tva[1].replace(/\s/g, "");
+  }
+  const rep = find(first, /Votre repr[ée]sentant/);
+  if (rep) { const t = rep.text;
+    const m1 = t.match(/\b(KLT\d+)\b/); if (m1) o.clientNum = m1[1];
+    const m2 = t.match(/\b(P\d{5,})\b/); if (m2) o.projet = m2[1];
+    const m3 = t.match(/\b(\d{7,9})\b(?=\s+\d{2}-\d{2}-\d{2,4}\s*$)/) || t.match(/\b(\d{8})\b/); if (m3) o.num = m3[1];
+    const m4 = t.match(/(\d{2}-\d{2}-\d{2,4})\s*$/); if (m4) o.dateOffre = dateFr(m4[1]);
+    const m5 = t.match(/Votre repr[ée]sentant\s+(.+?)\s+-\s+\+/); if (m5) o.representant = m5[1]; }
+  // Corps : lignes entre « Désignation » et le pied de page, toutes pages confondues
+  const body = [];
+  P.forEach(L => { const h = find(L, /^D[ée]signation\b/); if (!h) return; const f = L.find(l => l.y < h.y && /^(Transfert|Service center)/.test(l.text));
+    L.forEach(l => { if (l.y < h.y && (!f || l.y > f.y)) body.push(l); }); });
+  for (let i = 0; i < body.length; i++) {
+    const t = body[i].text, m = t.match(/^([A-Z]{1,4}\d{3,7})\s+(?:(.*?)\s+)?(\d+(?:,\d+)?)(?:\s+[A-Z]{2,5})?\s+(\d[\d.]*,\d{2})\s+(\d[\d.]*,\d{2})$/);
+    if (!m) continue;
+    let desc = (m[2] || "").trim();
+    const nx = body[i + 1], dx = body[i].items[1] ? body[i].items[1].x : 0;
+    if (!desc && nx) { desc = nx.text; i++; }
+    else if (desc && nx && Math.abs(nx.x - dx) <= 3 && !/:/.test(nx.text)) { desc += " " + nx.text; i++; }
+    o.lignes.push({ code: m[1], desc, qte: numFr(m[3]), pu: numFr(m[4]), total: numFr(m[5]) });
+  }
+  const all = P.flat().map(l => l.text), val = re => { const l = all.find(s => re.test(s)); return l ? l.replace(re, "").trim() : ""; };
+  o.montantHT = numFr((val(/^.*Montant net\s+/).match(/[\d.]+,\d{2}/) || [])[0]) || numFr((val(/^\s*Total\s+/).match(/[\d.]+,\d{2}/) || [])[0]);
+  o.montantTTC = numFr((val(/^.*Total EUR Montant\s+/).match(/[\d.]+,\d{2}/) || [])[0]);
+  o.validite = dateFr(val(/^Offre de validit[ée]\s*/));
+  o.paiement = val(/^Conditions du paiement\s*/);
+  o.livraison = val(/^Conditions de livraison\s*/);
+  const delais = [...new Set(body.map(l => l.text.match(/^D[ée]lai[^:]*:\s*(.+)$/)).filter(Boolean).map(m => m[1].trim()))]; o.delai = delais.join(" / ");
+  const vc = all.findIndex(s => /Votre contact\s*$/.test(s)); if (vc >= 0 && all[vc + 1] && !/Service center/.test(all[vc + 1])) o.contactMgh = all[vc + 1].trim();
+  const txt = body.map(l => l.text).join("\n");
+  o.nature = /r[ée]vision/i.test(txt) ? "Révision" : /r[ée]ducteur propos|nouveau r[ée]ducteur|nouvelle g[ée]n[ée]ration|moto-?r[ée]ducteur/i.test(txt) ? "Réducteur neuf" : /r[ée]paration|expertise|inspection/i.test(txt) ? "Réparation / service" : "Pièces / divers";
+  o.objet = o.lignes.map(l => (l.qte && l.qte !== 1 ? l.qte + " × " : "") + l.desc).join(" ; ");
+  return o;
+}
+
 const MOIS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
 const agRdv = () => S.fiches.filter(f => f.dateRDV && (f.etape === ETAPES[3] || f.etape === ETAPES[4]))
   .sort((a, b) => (a.dateRDV + (a.heure || "")).localeCompare(b.dateRDV + (b.heure || "")));
@@ -744,7 +1087,7 @@ function viewSetup() {
       <div class="rows">
         <div class="row" style="grid-template-columns:140px minmax(0,1fr);cursor:default"><span class="lbl">Connecté</span><span style="overflow-wrap:anywhere">${esc(SupaStore.user)}</span></div>
         <div class="row" style="grid-template-columns:140px minmax(0,1fr);cursor:default"><span class="lbl">Fiches</span><span class="num">${S.fiches.length}</span></div>
-        <div class="row" style="grid-template-columns:140px minmax(0,1fr);cursor:default"><span class="lbl">Tournées</span><span class="num">${S.tournees.length}</span></div>
+        <div class="row" style="grid-template-columns:140px minmax(0,1fr);cursor:default"><span class="lbl">Offres</span><span class="num">${S.offres.length}</span></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <button class="btn" id="export">Exporter vers Excel (CSV)</button>
@@ -785,13 +1128,17 @@ function usersPanel() {
 const JLABEL = { soc:"Société", ref:"Réf.", contact:"Contact", tel:"Téléphone", mail:"Mail", adr:"Adresse", pays:"Pays", zone:"Zone", statut:"Statut",
   prio:"Priorité", objet:"Objet", consigne:"Consigne", resp:"Responsable", etape:"Étape", nb:"Tentatives", last:"Dernier contact", relance:"Relance",
   date_rdv:"Date RDV", heure:"Heure", duree:"Durée", lieu:"Lieu", agenda:"Agenda Outlook", hist:"Historique", entree:"Date d'entrée",
-  du:"Du", au:"Au", dispo:"Disponibilité", event_id:"ID événement", synchro:"Synchro" };
+  du:"Du", au:"Au", dispo:"Disponibilité", event_id:"ID événement", synchro:"Synchro",
+  num:"N° offre", date_offre:"Date offre", client_num:"N° client", projet:"Projet", tva:"TVA", nature:"Nature", lignes:"Lignes", montant_ht:"Montant HT",
+  montant_ttc:"Montant TTC", validite:"Validité", paiement:"Paiement", livraison:"Livraison", delai:"Délai", contact_mgh:"Contact MGH",
+  date_target:"Date target", dernier_appel:"Dernier appel", proba:"Probabilité", motif:"Commentaire", fiche_id:"Fiche liée", pdf_path:"PDF", pdf_nom:"Nom du PDF" };
+const JOBJ = { fiche: ["Nouvelle fiche", "Fiche supprimée"], tournee: ["Nouvelle tournée", "Tournée supprimée"], offre: ["Nouvelle offre", "Offre supprimée"] };
 const JACT = { connexion:"Connexion", creation:"Création", modification:"Modification", suppression:"Suppression" };
 const jval = v => v === null || v === undefined || v === "" ? "vide" : /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? fr(String(v)) : String(v);
 function jdetail(r) {
   if (r.action === "connexion") return "Ouverture de l'application";
-  if (r.action === "creation") return r.objet === "fiche" ? "Nouvelle fiche" : "Nouvelle tournée";
-  if (r.action === "suppression") return (r.objet === "fiche" ? "Fiche supprimée" : "Tournée supprimée") + (r.details && r.details.ref ? " (" + r.details.ref + ")" : "");
+  if (r.action === "creation") return (JOBJ[r.objet] || JOBJ.fiche)[0];
+  if (r.action === "suppression") return (JOBJ[r.objet] || JOBJ.fiche)[1] + (r.details && (r.details.ref || r.details.num) ? " (" + (r.details.ref || r.details.num) + ")" : "");
   return Object.entries(r.details || {}).map(([k, v]) => k === "hist"
       ? "Historique : " + (String(v.apres || "").split("\n")[0].slice(0, 90) || "modifié")
       : (JLABEL[k] || k) + " : " + jval(v.avant) + " → " + jval(v.apres)).join(" · ");
@@ -805,13 +1152,14 @@ function journalPanel() {
       <select id="jf-type" aria-label="Type d'action"><option value="">Toutes les actions</option>${Object.entries(JACT).map(([k, v]) => `<option value="${k}" ${f.type === k ? "selected" : ""}>${v}s</option>`).join("")}</select>
       <select id="jf-email" aria-label="Utilisateur"><option value="">Tous les utilisateurs</option>${emails.map(e => `<option ${f.email === e ? "selected" : ""}>${esc(e)}</option>`).join("")}</select>
       <select id="jf-days" aria-label="Période"><option value="1" ${f.days === "1" ? "selected" : ""}>Dernières 24 h</option><option value="7" ${f.days === "7" ? "selected" : ""}>7 derniers jours</option><option value="30" ${f.days === "30" ? "selected" : ""}>30 derniers jours</option><option value="90" ${f.days === "90" ? "selected" : ""}>90 derniers jours</option><option value="" ${!f.days ? "selected" : ""}>Tout</option></select>
-      ${f.rec ? `<span class="chip">${f.recObj === "tournee" ? "Tournée" : "Fiche"} : ${esc(f.recLabel || f.rec)} <button class="btn small ghost" id="jf-rec-clear" aria-label="Retirer le filtre">✕</button></span>` : ""}
+      ${f.rec ? `<span class="chip">${f.recObj === "tournee" ? "Tournée" : f.recObj === "offre" ? "Offre" : "Fiche"} : ${esc(f.recLabel || f.rec)} <button class="btn small ghost" id="jf-rec-clear" aria-label="Retirer le filtre">✕</button></span>` : ""}
       <button class="btn small" id="j-refresh">Actualiser</button><button class="btn small" id="j-export">Exporter (CSV)</button>
     </div>
     <div class="tablewrap"><table><thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Objet</th><th>Détail</th></tr></thead><tbody>
     ${J.map(r => `<tr style="cursor:default"><td class="num" style="white-space:nowrap">${jdate(r.at)}</td><td>${esc(r.email || "?")}</td>
       <td><span class="al ${r.action === "suppression" ? "crit" : r.action === "connexion" ? "" : "info"}">${JACT[r.action] || esc(r.action)}</span></td>
-      <td>${r.objet === "session" ? "" : (r.objet === "fiche" && r.action !== "suppression" ? `<button class="btn small ghost" data-open-f="${esc(r.record_id)}">${esc(r.libelle || "Fiche")}</button>` : esc((r.objet === "tournee" ? "Tournée " : "") + (r.libelle || "")))}</td>
+      <td>${r.objet === "session" ? "" : (r.objet === "fiche" && r.action !== "suppression" ? `<button class="btn small ghost" data-open-f="${esc(r.record_id)}">${esc(r.libelle || "Fiche")}</button>`
+        : r.objet === "offre" && r.action !== "suppression" ? `<button class="btn small ghost" data-open-o="${esc(r.record_id)}">Offre ${esc(r.libelle || "")}</button>` : esc((r.objet === "tournee" ? "Tournée " : r.objet === "offre" ? "Offre " : "") + (r.libelle || "")))}</td>
       <td style="min-width:260px">${esc(jdetail(r))}</td></tr>`).join("") || `<tr><td colspan="5" class="empty">Aucune activité sur cette période.</td></tr>`}
     </tbody></table></div></section>`;
 }
@@ -824,10 +1172,10 @@ function journalCsv() {
 async function loadUsers() { try { S.users = await SupaStore.listUsers(); } catch (e) { S.users = []; toast("Liste des utilisateurs indisponible : " + e.message); } }
 function applyReadOnly() {
   if (S.access !== "lecture") return;
-  $app.querySelectorAll(".w, #new, #save, #del, .quick, .note-row, #tform, #tsave, #tdel, #inst-file").forEach(el => {
+  $app.querySelectorAll(".w, #new, #save, #del, .quick, .note-row, #tform, #tsave, #tdel, #inst-file, #odrop, #osave, #odel").forEach(el => {
     const box = el.closest(".panel") && el.id === "tform" ? el.closest(".panel") : el.closest(".quick")?.parentElement || el;
     box.hidden = true; });
-  $app.querySelectorAll("[data-k], [data-tk]").forEach(el => { el.disabled = true; });
+  $app.querySelectorAll("[data-k], [data-tk], [data-ok]").forEach(el => { el.disabled = true; });
 }
 function viewLogin(msg) {
   return `<div style="max-width:440px;margin:40px auto" class="panel">
@@ -934,13 +1282,13 @@ function render() {
 
   const sc = window.scrollY;
   if (S.needsLogin || S.notMember) { $app.innerHTML = viewLogin(S.notMember ? "L'adresse " + SupaStore.user + " n'est pas autorisée. Demandez à Damien de l'ajouter." : S.loginMsg); return; }
-  $app.innerHTML = S.view === "dash" ? viewDash() : S.view === "fiches" ? viewFiches() : S.view === "agenda" ? viewAgenda() : S.view === "tournees" ? viewTournees() : viewSetup();
+  $app.innerHTML = S.view === "dash" ? viewDash() : S.view === "fiches" ? viewFiches() : S.view === "offres" ? viewOffres() : S.view === "agenda" ? viewAgenda() : S.view === "tournees" ? viewTournees() : viewSetup();
   applyReadOnly();
   const m = document.getElementById("mode"); if (m) { m.textContent = S.access === "lecture" ? "LECTURE SEULE" : "EN LIGNE"; m.classList.toggle("live", S.access !== "lecture"); }
   window.scrollTo(0, sc);
 }
-function go(view) { if (view === "setup" && SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal()]).then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } render(); window.scrollTo(0,0); }
-function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.back = S.view === "agenda" ? "agenda" : null; S.sel = id; S.draft = {...f}; S.view = "fiches"; render(); }
+function go(view) { if (view === "setup" && SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal()]).then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } if (view !== "offres") { S.osel = null; S.odraft = null; S.opendingFile = null; } render(); window.scrollTo(0,0); }
+function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.back = S.view === "agenda" ? "agenda" : S.view === "offres" && S.osel ? "offres" : null; S.sel = id; S.draft = {...f}; S.view = "fiches"; render(); }
 function newFiche() { S.sel = "__new"; S.draft = { id:"", soc:"", contact:"", tel:"", mail:"", adr:"", pays:"", zone:"", statut:"Prospect", prio:2, objet:"", consigne:"",
   resp:"Vit'Admin", etape:ETAPES[0], nb:0, last:"", relance:"", dateRDV:"", heure:"", duree:"", lieu:"", agenda:"", hist:"", entree:"", modif:"" }; render(); setTimeout(() => document.getElementById("d-soc")?.focus(), 0); }
 function note(txt) { const d = S.draft; d.hist = frShort(isoToday()) + " " + S.role + " : " + txt + (d.hist ? "\n" + d.hist : ""); }
@@ -953,6 +1301,50 @@ document.getElementById("role").addEventListener("click", e => { const b = e.tar
 $app.addEventListener("click", async e => {
   const t = e.target;
   const o = t.closest("[data-open]"); if (o && !t.closest(".sheet")) { openFiche(o.dataset.open); return; }
+  const oo = t.closest("[data-open-o]"); if (oo && !(t.closest(".sheet") && S.view === "offres")) { openOffre(oo.dataset.openO); return; }
+  const og = t.closest("[data-ogo-alerte],[data-ogo-statut]"); if (og) { Object.assign(S.oflt, { alerte: og.dataset.ogoAlerte || "", statut: og.dataset.ogoStatut || "", q: "" }); go("offres"); return; }
+  const os = t.closest("[data-osort]"); if (os) { const k = os.dataset.osort; S.osort = [k, S.osort[0] === k ? -S.osort[1] : 1]; render(); return; }
+  if (t.id === "of-reset") { S.oflt = { q: "", statut: "", alerte: "", resp: "", open: "1" }; render(); return; }
+  if (t.id === "onew") { newOffre(); render(); setTimeout(() => document.getElementById("o-soc")?.focus(), 0); return; }
+  if (t.id === "f-newoffre") { readDraft(); const f = S.draft;
+    newOffre({ soc: f.soc, contact: f.contact, tel: f.tel, mail: f.mail, adr: f.adr, pays: f.pays, zone: f.zone, ficheId: f.id }); render(); return; }
+  if (t.id === "maps") { readDraft(); const d = S.draft; if (!d.adr && !d.soc) { toast("Indiquez d'abord l'adresse"); return; } window.open(mapsUrl(d), "_blank", "noopener"); return; }
+  if (t.id === "omaps") { readODraft(); const d = S.odraft; if (!d.adr && !d.soc) { toast("Indiquez d'abord l'adresse"); return; } window.open(mapsUrl(d), "_blank", "noopener"); return; }
+  if (t.id === "oclose" || t.id === "ocancel") { const back = S.back; S.osel = null; S.odraft = null; S.opendingFile = null; render(); return; }
+  if (t.id === "o-openfiche") { readODraft(); const id = S.odraft.ficheId; S.osel = null; S.odraft = null; S.opendingFile = null; S.view = "offres"; openFiche(id); return; }
+  if (t.id === "o-pdf") { const w = window.open("", "_blank");
+    try { const u = await SupaStore.pdfUrl(S.odraft.pdfPath); if (w) w.location = u; else location.href = u; }
+    catch (err) { if (w) w.close(); toast("PDF indisponible : " + err.message); } return; }
+  if (t.id === "odel") { S.confirmODel = S.odraft.id; render(); return; }
+  if (t.id === "odel-no") { S.confirmODel = null; render(); return; }
+  if (t.id === "odel-ok") { const d = S.odraft;
+    try { await SupaStore.deleteOffre(d, S); S.osel = null; S.odraft = null; S.confirmODel = null; toast("Offre supprimée : " + d.soc); render(); }
+    catch (err) { toast("Suppression impossible : " + err.message); } return; }
+  if (t.id === "ojournal") { S.jf = { type: "", email: "", days: "", rec: S.odraft.id, recObj: "offre", recLabel: S.odraft.soc + (S.odraft.num ? " · " + S.odraft.num : "") }; S.osel = null; S.odraft = null; go("setup"); return; }
+  if (t.id === "oaddnote") { readODraft(); const v = document.getElementById("onote").value.trim(); if (v) { onote(v); render(); } return; }
+  const oq = t.closest("[data-oq]");
+  if (oq) { readODraft(); const d = S.odraft, today = isoToday(), k = oq.dataset.oq;
+    if (k === "call") { d.appel = today; if (!d.statut || d.statut === OSTATUTS[0]) d.statut = OSTATUTS[1]; d.relance = addDays(today, 7); onote("appel de suivi"); }
+    if (k === "noanswer") { d.appel = today; if (!d.statut || d.statut === OSTATUTS[0]) d.statut = OSTATUTS[1]; d.relance = addDays(today, 3); onote("appel de suivi sans réponse"); }
+    if (k === "r7") d.relance = addDays(today, 7);
+    if (k === "r30") d.relance = addDays(today, 30);
+    if (k === "nego") { d.statut = OSTATUTS[2]; if (!d.relance || d.relance <= today) d.relance = addDays(today, 7); onote("négociation en cours"); }
+    if (k === "won") { d.statut = OSTATUTS[3]; d.relance = ""; d.proba = ""; onote("commande reçue"); }
+    if (k === "lost") { d.statut = OSTATUTS[4]; d.relance = ""; d.proba = ""; onote("offre perdue"); }
+    render(); if (k === "lost") setTimeout(() => document.getElementById("o-motif")?.focus(), 0); return; }
+  if (t.id === "osave") { readODraft(); const d = S.odraft;
+    if (!String(d.soc).trim()) { toast("Indiquez le nom de la société"); document.getElementById("o-soc").focus(); return; }
+    if (d.statut === OSTATUTS[4] && !String(d.motif).trim()) { toast("Offre perdue : indiquez le motif"); document.getElementById("o-motif").focus(); return; }
+    const isNew = !d.id; if (isNew) onote("suivi créé" + (d.num ? " · offre n° " + d.num : ""));
+    t.disabled = true;
+    try { let saved = await SupaStore.saveOffre({ ...d }, S);
+      if (S.opendingFile) { const old = saved.pdfPath, file = S.opendingFile;
+        const path = await SupaStore.uploadPdf(file, saved.id);
+        saved = await SupaStore.saveOffre({ ...saved, pdfPath: path, pdfNom: file.name }, S); S.opendingFile = null;
+        if (old && old !== path) SupaStore.removePdf(old); }
+      S.osel = saved.id; S.odraft = { ...saved }; toast(isNew ? "Suivi d'offre créé" : "Offre enregistrée"); render(); }
+    catch (err) { t.disabled = false; if (isNew) d.hist = String(d.hist).split("\n").slice(1).join("\n"); toast("Enregistrement impossible : " + err.message); }
+    return; }
   const ge = t.closest("[data-goto-etape]"); if (ge) { Object.assign(S.flt, { etape: ge.dataset.gotoEtape, alerte: "", q: "" }); saveUi(); go("fiches"); return; }
   const ga = t.closest("[data-goto-alerte]"); if (ga) { Object.assign(S.flt, { alerte: ga.dataset.gotoAlerte, etape: "", q: "" }); saveUi(); go("fiches"); return; }
   const gv = t.closest("[data-view-go]"); if (gv) { go(gv.dataset.viewGo); return; }
@@ -1034,6 +1426,7 @@ $app.addEventListener("click", async e => {
 });
 $app.addEventListener("input", e => {
   const t = e.target;
+  if (t.id === "oq") { S.oflt.q = t.value; clearTimeout(render.h); render.h = setTimeout(() => { render(); const q = document.getElementById("oq"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 180); }
   if (t.id === "q") { S.flt.q = t.value; clearTimeout(render.h); render.h = setTimeout(() => { saveUi(); render(); const q = document.getElementById("q"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 180); }
 });
 $app.addEventListener("change", async e => {
@@ -1044,6 +1437,11 @@ $app.addEventListener("change", async e => {
       Object.assign(S, await Store.load()); log("Terminé : " + n + " fiches importées."); render(); }
     catch (err) { log("Erreur : " + err.message); inp.disabled = false; }
     return; }
+  if ((e.target.id === "o-import" || e.target.id === "o-file") && e.target.files[0]) { const attach = e.target.id === "o-file"; if (attach) readODraft(); await importOffrePdf(e.target.files[0], attach); return; }
+  const omap = { "of-statut":"statut", "of-alerte":"alerte", "of-resp":"resp" };
+  if (omap[e.target.id]) { S.oflt[omap[e.target.id]] = e.target.value; render(); return; }
+  if (e.target.id === "of-open") { S.oflt.open = e.target.checked ? "1" : ""; render(); return; }
+  if (e.target.dataset && e.target.dataset.ok) { readODraft(); if (e.target.dataset.ok === "ficheId") render(); return; }
   const t = e.target, map = { "f-etape":"etape", "f-pays":"pays", "f-prio":"prio", "f-resp":"resp", "f-alerte":"alerte" };
   if (map[t.id]) { S.flt[map[t.id]] = t.value; saveUi(); render(); }
   const jmap = { "jf-type":"type", "jf-email":"email", "jf-days":"days" };
@@ -1052,7 +1450,16 @@ $app.addEventListener("change", async e => {
   if (t.id === "f-open") { S.flt.open = t.checked ? "1" : ""; saveUi(); render(); }
   if (t.dataset && t.dataset.k) { readDraft(); }
 });
-$app.addEventListener("keydown", e => { if (e.target.id === "note" && e.key === "Enter") { e.preventDefault(); document.getElementById("addnote").click(); } });
+$app.addEventListener("keydown", e => { if (e.target.id === "note" && e.key === "Enter") { e.preventDefault(); document.getElementById("addnote").click(); }
+  if (e.target.id === "onote" && e.key === "Enter") { e.preventDefault(); document.getElementById("oaddnote").click(); } });
+// Glisser-déposer d'un PDF d'offre sur l'onglet Offres
+document.addEventListener("dragover", e => { if (!e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return; e.preventDefault();
+  const z = document.getElementById("odrop"); if (z && S.view === "offres" && S.access !== "lecture") z.classList.add("over"); });
+document.addEventListener("dragleave", e => { if (e.relatedTarget) return; document.getElementById("odrop")?.classList.remove("over"); });
+document.addEventListener("drop", async e => { if (!e.dataTransfer || !e.dataTransfer.files.length) return; e.preventDefault();
+  document.getElementById("odrop")?.classList.remove("over");
+  if (S.view !== "offres" || S.access === "lecture" || S.offresKo) { toast("Déposez le PDF dans l'onglet Offres"); return; }
+  await importOffrePdf(e.dataTransfer.files[0], false); });
 $app.addEventListener("submit", async e => {
   if (e.target.id === "login") { e.preventDefault(); const em = document.getElementById("l-email").value.trim(); S.lastEmail = em;
     try { await SupaStore.login(em, document.getElementById("l-pass").value); S.loginMsg = ""; Object.assign(S, await Store.load()); boot2(); }
@@ -1068,12 +1475,14 @@ $app.addEventListener("submit", async e => {
   try { await Store.saveTournee({ id: "", du: v("t-du"), au: v("t-au"), zone: v("t-zone"), dispo: v("t-dispo"), consigne: v("t-cons") }, S); toast("Tournée ajoutée"); render(); }
   catch (err) { toast("Enregistrement impossible : " + err.message); }
 });
-document.addEventListener("keydown", e => { if (e.key === "Escape" && S.sel) { S.sel = null; S.draft = null; render(); } });
+document.addEventListener("keydown", e => { if (e.key !== "Escape") return;
+  if (S.sel) { S.sel = null; S.draft = null; if (S.back) { S.view = S.back; S.back = null; } render(); }
+  else if (S.osel) { S.osel = null; S.odraft = null; S.opendingFile = null; render(); } });
 
 (async () => {
   try { Object.assign(S, await Store.load()); }
   catch (err) { $app.innerHTML = `<div class="panel"><b>Connexion à la base impossible.</b><p>${esc(err.message)}</p><p>Vérifiez votre connexion internet puis rechargez la page.</p></div>`; return; }
-  if (location.hash === "#fiches" || location.hash === "#tournees") S.view = location.hash.slice(1);
+  if (["#fiches", "#offres", "#agenda", "#tournees"].includes(location.hash)) S.view = location.hash.slice(1);
   boot2();
   render();
 })();
@@ -1082,10 +1491,10 @@ function boot2() {
   if (!S.fiches.length) S.view = "setup";
   if (SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal()]).then(() => { if (S.view === "setup") render(); });
   SupaStore.live((table, p) => {
-    const map = table === "fiches" ? COLS : TCOLS, list = table === "fiches" ? S.fiches : S.tournees;
+    const map = table === "fiches" ? COLS : table === "offres" ? OCOLS : TCOLS, list = table === "fiches" ? S.fiches : table === "offres" ? S.offres : S.tournees;
     if (p.eventType === "DELETE") { const i = list.findIndex(x => x.id === p.old.id); if (i >= 0) list.splice(i, 1); }
     else { const o = SupaStore.fromDb(p.new, map); const i = list.findIndex(x => x.id === o.id); if (i >= 0) list[i] = o; else list.unshift(o); }
-    if (S.sel) { S.pending = true; } else render();
+    if (S.sel || S.osel) { S.pending = true; } else render();
   });
 }
 </script>

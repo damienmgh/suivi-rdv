@@ -30,7 +30,7 @@
   --ok:#6CC070; --warn:#E5A23A; --crit:#EF7B7B; --ok-soft:#1D2E22; --warn-soft:#33281A; --crit-soft:#3A2024;
   --plate:#FFFFFF; --shadow:0 8px 28px rgba(0,0,0,.45); color-scheme:dark }
 *{box-sizing:border-box}
-html,body{height:100%}
+html{height:100%}body{min-height:100%}
 body{background:var(--bg);color:var(--text);font-family:var(--f-body);font-size:15px;line-height:1.45;margin:0}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--surface)}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -112,6 +112,8 @@ main{padding-block:20px 48px}
 .split.open{grid-template-columns:minmax(0,1fr) minmax(720px,880px)}
 @media (max-width:1300px){.split.open{grid-template-columns:minmax(0,1fr)}}
 .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+:root{--hdr:72px}
+.split>div>.filters,.ag-head{position:sticky;top:var(--hdr);z-index:15;background:var(--bg);padding:10px 0;box-shadow:0 8px 8px -10px rgba(24,35,74,.35)}
 .filters input[type=search]{flex:1 1 220px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:3px;background:var(--surface)}
 .filters select{padding:7px 8px;border:1px solid var(--line);border-radius:3px;background:var(--surface);max-width:100%}
 .count{font-size:13px;color:var(--muted);margin-left:auto}
@@ -134,7 +136,7 @@ td.soc small{display:block;font-weight:400;color:var(--muted);font-size:12px}
 .card .meta{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:13px;color:var(--muted)}
 
 /* Panneau fiche */
-.sheet{background:var(--surface);border:1px solid var(--line);border-radius:4px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 76px);max-height:calc(100vh - 100px);overflow:auto}
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:4px;position:sticky;top:calc(var(--hdr) + 8px);max-height:calc(100vh - var(--hdr) - 24px);overflow:auto}
 @media (max-width:1300px){.sheet{position:fixed;inset:0;max-height:none;border-radius:0;z-index:40;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}}
 .sheet-h{display:flex;gap:8px;align-items:start;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:1}
 .sheet-h h3{margin:0;font-size:18px;color:var(--ink);line-height:1.2}
@@ -1522,10 +1524,12 @@ function render() {
   const sc = window.scrollY;
   if (S.needsLogin || S.notMember) { $app.innerHTML = viewLogin(S.notMember ? "L'adresse " + SupaStore.user + " n'est pas autorisée. Demandez à Damien de l'ajouter." : S.loginMsg); return; }
   $app.innerHTML = S.view === "dash" ? viewDash() : S.view === "fiches" ? viewFiches() : S.view === "offres" ? viewOffres() : S.view === "agenda" ? viewAgenda() : S.view === "carnet" ? viewCarnet() : S.view === "tournees" ? viewTournees() : viewSetup();
-  applyReadOnly();
+  applyReadOnly(); setHdr();
   const m = document.getElementById("mode"); if (m) { m.textContent = S.access === "lecture" ? "LECTURE SEULE" : "EN LIGNE"; m.classList.toggle("live", S.access !== "lecture"); }
   window.scrollTo(0, sc);
 }
+function setHdr() { const h = document.querySelector("header.top"); if (h) document.documentElement.style.setProperty("--hdr", Math.round(h.getBoundingClientRect().height) + "px"); }
+window.addEventListener("resize", () => { clearTimeout(setHdr.t); setHdr.t = setTimeout(setHdr, 100); });
 function go(view) { if (view === "setup" && SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal(), loadSauvegarde()]).then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } if (view !== "offres") { S.osel = null; S.odraft = null; S.opendingFile = null; } if (view !== "carnet") { S.csel = null; S.cdraft = null; } S.pick = false; render(); window.scrollTo(0,0); }
 function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.back = S.view === "agenda" ? "agenda" : S.view === "offres" && S.osel ? "offres" : null; S.sel = id; S.draft = {...f}; S.pick = false; S.confirmPDel = null; S.view = "fiches"; render(); }
 function newFiche() { S.sel = "__new"; S.draft = { id:"", soc:"", contact:"", tel:"", mail:"", adr:"", pays:"", zone:"", statut:"Prospect", prio:2, objet:"", consigne:"",

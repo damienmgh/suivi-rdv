@@ -214,6 +214,14 @@ fieldset legend{padding:0;margin-bottom:8px}
 .lines{width:100%;border-collapse:collapse;font-size:13px}.lines th,.lines td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.lines .n{text-align:right;white-space:nowrap}
 .att{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
 .adr-row{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+tr.flag>td{background:var(--warn-soft)}tr.flag>td:first-child{box-shadow:inset 4px 0 0 var(--warn)}
+.card.flag{background:var(--warn-soft);border-left:4px solid var(--warn)}
+.flagbtn{border:0;background:transparent;font-size:18px;line-height:1;padding:4px 6px;border-radius:3px;color:var(--label);cursor:pointer}
+.flagbtn.on{color:var(--warn)}.flagbtn:hover{background:var(--surface-2)}
+.flag-toggle.on{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
+.picker{grid-column:1/-1;border:1px solid var(--line);border-radius:4px;padding:10px;background:var(--surface-2);display:grid;gap:8px}
+.picker .rows{max-height:280px;overflow:auto}
+.ct-row{grid-template-columns:minmax(0,1fr) auto!important}
 @media print{
   body::before,header.top,main,#toast{display:none!important}
   :root{padding:0!important}
@@ -251,6 +259,7 @@ fieldset legend{padding:0;margin-bottom:8px}
       <button role="tab" data-view="fiches" id="tab-fiches">Fiches</button>
       <button role="tab" data-view="offres" id="tab-offres">Offres</button>
       <button role="tab" data-view="agenda" id="tab-agenda">Agenda</button>
+      <button role="tab" data-view="carnet" id="tab-carnet">Carnet d'adresses</button>
       <button role="tab" data-view="setup" id="tab-setup">Compte</button>
     </nav>
     <div class="who">
@@ -385,7 +394,11 @@ const DemoStore = {
 // ===== Stockage Supabase =====
 const COLS = { soc:"soc", ref:"ref", contact:"contact", tel:"tel", mail:"mail", adr:"adr", pays:"pays", zone:"zone", statut:"statut",
   prio:"prio", objet:"objet", consigne:"consigne", resp:"resp", etape:"etape", nb:"nb", last:"last", relance:"relance",
-  dateRDV:"date_rdv", heure:"heure", duree:"duree", lieu:"lieu", agenda:"agenda", hist:"hist", entree:"entree" };
+  dateRDV:"date_rdv", heure:"heure", duree:"duree", lieu:"lieu", agenda:"agenda", hist:"hist", entree:"entree", flag:"flag" };
+const CCOLS = { prenom:"prenom", nom:"nom", societe:"societe", fonction:"fonction", email:"email", email2:"email2", tel:"tel", mobile:"mobile",
+  adresse:"adresse", cp:"cp", ville:"ville", pays:"pays", notes:"notes", groupes:"groupes", source:"source" };
+const PCOLS = { ficheId:"fiche_id", nom:"nom", path:"path", taille:"taille", type:"type", createdAt:"created_at", createdBy:"created_by" };
+const BOOLS = ["flag"];
 const TCOLS = { du:"du", au:"au", zone:"zone", dispo:"dispo", consigne:"consigne" };
 const OCOLS = { num:"num", dateOffre:"date_offre", clientNum:"client_num", projet:"projet", soc:"soc", contact:"contact", tel:"tel", mail:"mail",
   adr:"adr", pays:"pays", zone:"zone", tva:"tva", nature:"nature", objet:"objet", lignes:"lignes", montantHT:"montant_ht", montantTTC:"montant_ttc",
@@ -406,9 +419,10 @@ const SupaStore = {
   toDb(o, map) {
     const r = {};
     for (const [k, c] of Object.entries(map)) {
-      if (k === "agenda" || !(k in o)) continue;
+      if (k === "agenda" || !(k in o) || (k === "flag" && !SupaStore.hasFlag)) continue;
       let v = o[k];
-      if (NUMS.includes(k)) v = v === "" || v === null || isNaN(+v) ? null : +v;
+      if (BOOLS.includes(k)) v = v === true || v === "true";
+      else if (NUMS.includes(k)) v = v === "" || v === null || isNaN(+v) ? null : +v;
       else if (DATES.includes(k)) v = v ? String(v).slice(0,10) : null;
       else v = v === "" || v === null ? null : String(v);
       r[c] = v;
@@ -433,7 +447,11 @@ const SupaStore = {
     const [a, b] = await Promise.all([this.all("fiches"), this.all("tournees")]);
     let offres = [], offresKo = "";
     try { offres = (await this.all("offres")).map(r => this.fromDb(r, OCOLS)); } catch (e) { offresKo = e.message; }
-    return { fiches: a.map(r => this.fromDb(r, COLS)), tournees: b.map(r => this.fromDb(r, TCOLS)), offres, offresKo, needsLogin: false, notMember: false,
+    let contacts = [], pieces = [], contactsKo = "", piecesKo = "";
+    this.hasFlag = !a.length || Object.prototype.hasOwnProperty.call(a[0], "flag");
+    try { contacts = (await this.all("contacts")).map(r => this.fromDb(r, CCOLS)); } catch (e) { contactsKo = e.message; }
+    try { pieces = (await this.all("pieces")).map(r => this.fromDb(r, PCOLS)); } catch (e) { piecesKo = e.message; }
+    return { fiches: a.map(r => this.fromDb(r, COLS)), tournees: b.map(r => this.fromDb(r, TCOLS)), offres, offresKo, contacts, pieces, contactsKo, piecesKo, needsLogin: false, notMember: false,
       access: role === "lecture" ? "lecture" : "editeur" };
   },
   async upsert(table, map, o) {
@@ -481,6 +499,42 @@ const SupaStore = {
     if (error) throw new Error(error.message); return data.signedUrl;
   },
   removePdf(path) { this.client().storage.from("offres").remove([path]).then(() => {}, () => {}); },
+  async addPiece(file, ficheId, state) {
+    const safe = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w.-]+/g, "_").slice(-80);
+    const path = ficheId + "/" + Date.now() + "_" + safe;
+    const up = await this.client().storage.from("pieces").upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
+    if (up.error) throw new Error(up.error.message);
+    const { data, error } = await this.client().from("pieces").insert({ fiche_id: ficheId, nom: file.name, path, taille: file.size, type: file.type || null }).select().single();
+    if (error) { this.client().storage.from("pieces").remove([path]).then(() => {}, () => {}); throw new Error(error.message); }
+    const o = this.fromDb(data, PCOLS); if (!state.pieces.some(x => x.id === o.id)) state.pieces.push(o); return o;
+  },
+  async deletePiece(pc, state) {
+    const { error } = await this.client().from("pieces").delete().eq("id", pc.id);
+    if (error) throw new Error(error.message);
+    this.client().storage.from("pieces").remove([pc.path]).then(() => {}, () => {});
+    state.pieces = state.pieces.filter(x => x.id !== pc.id);
+  },
+  async pieceUrl(path) { const { data, error } = await this.client().storage.from("pieces").createSignedUrl(path, 600); if (error) throw new Error(error.message); return data.signedUrl; },
+  async saveContact(c, state) {
+    const saved = await this.upsert("contacts", CCOLS, c);
+    const i = state.contacts.findIndex(x => String(x.id) === String(saved.id));
+    if (i >= 0) state.contacts[i] = saved; else state.contacts.push(saved);
+    return saved;
+  },
+  async deleteContact(id, state) {
+    const { error } = await this.client().from("contacts").delete().eq("id", id); if (error) throw new Error(error.message);
+    state.contacts = state.contacts.filter(x => String(x.id) !== String(id));
+  },
+  async importContacts(rows, log) {
+    let n = 0;
+    for (let i = 0; i < rows.length; i += 200) {
+      const chunk = rows.slice(i, i + 200);
+      const news = chunk.filter(r => !r.id).map(r => this.toDb(r, CCOLS)), olds = chunk.filter(r => r.id).map(r => ({ id: r.id, ...this.toDb(r, CCOLS) }));
+      if (news.length) { const { error } = await this.client().from("contacts").insert(news); if (error) throw new Error(error.message); }
+      if (olds.length) { const { error } = await this.client().from("contacts").upsert(olds); if (error) throw new Error(error.message); }
+      n += chunk.length; log(n + " / " + rows.length);
+    }
+  },
   async login(email, password) {
     const { error } = await this.client().auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.message === "Invalid login credentials" ? "adresse ou mot de passe incorrect" : error.message);
@@ -491,7 +545,10 @@ const SupaStore = {
   },
   isAdmin() { return (this.user || "").toLowerCase() === "damien@mgh.be"; },
   async deleteFiche(id, state) {
+    const paths = state.pieces.filter(x => String(x.ficheId) === String(id)).map(x => x.path);
     const { error } = await this.client().from("fiches").delete().eq("id", id);
+    if (!error && paths.length) this.client().storage.from("pieces").remove(paths).then(() => {}, () => {});
+    state.pieces = state.pieces.filter(x => String(x.ficheId) !== String(id));
     if (error) throw new Error(error.message);
     const i = state.fiches.findIndex(x => String(x.id) === String(id)); if (i >= 0) state.fiches.splice(i, 1);
   },
@@ -527,15 +584,17 @@ const SupaStore = {
   live(onChange) {
     this.client().channel("suivi").on("postgres_changes", { event: "*", schema: "public", table: "fiches" }, p => onChange("fiches", p))
       .on("postgres_changes", { event: "*", schema: "public", table: "tournees" }, p => onChange("tournees", p))
-      .on("postgres_changes", { event: "*", schema: "public", table: "offres" }, p => onChange("offres", p)).subscribe();
+      .on("postgres_changes", { event: "*", schema: "public", table: "offres" }, p => onChange("offres", p))
+      .on("postgres_changes", { event: "*", schema: "public", table: "contacts" }, p => onChange("contacts", p))
+      .on("postgres_changes", { event: "*", schema: "public", table: "pieces" }, p => onChange("pieces", p)).subscribe();
   }
 };
 const Store = CONFIG.mode === "supabase" ? SupaStore : DemoStore;
 
 /* ===================== État de l'interface ===================== */
-const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], offres: [], osel: null, odraft: null, opendingFile: null,
+const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], offres: [], contacts: [], pieces: [], csel: null, cdraft: null, cq: "", pick: false, pickQ: "", osel: null, odraft: null, opendingFile: null,
   oflt: { q: "", statut: "", alerte: "", resp: "", open: "1" }, osort: ["relance", 1], view: "dash", role: "DM", sel: null, draft: null,
-  flt: { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1" }, sort: ["relance", 1] };
+  flt: { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1", flag: "" }, sort: ["relance", 1] };
 try { const p = JSON.parse(localStorage.getItem("mgh-suivi-rdv-ui") || "{}"); if (p.role) S.role = p.role; if (p.flt) Object.assign(S.flt, p.flt); } catch (e) {}
 try { S.agMode = localStorage.getItem("mgh-ag-mode") || "mois"; } catch (e) {}
 const saveUi = () => { try { localStorage.setItem("mgh-suivi-rdv-ui", JSON.stringify({ role: S.role, flt: S.flt })); } catch (e) {} };
@@ -627,11 +686,11 @@ function filtered() {
   let L = S.fiches.filter(f =>
     (!q || [f.soc, f.contact, f.objet, f.zone, f.hist, f.adr, f.id].join(" ").toLowerCase().includes(q)) &&
     (!S.flt.etape || f.etape === S.flt.etape) && (!S.flt.pays || f.pays === S.flt.pays) &&
-    (!S.flt.prio || String(f.prio) === S.flt.prio) && (!S.flt.resp || f.resp === S.flt.resp) &&
+    (!S.flt.flag || !SupaStore.hasFlag || f.flag === true) && (!S.flt.prio || String(f.prio) === S.flt.prio) && (!S.flt.resp || f.resp === S.flt.resp) &&
     (!S.flt.alerte || (S.flt.alerte === "*" ? alerte(f) : alerte(f) === S.flt.alerte)) &&
     (S.flt.open !== "1" || S.flt.etape || !closed(f)));
   const [k, dir] = S.sort;
-  const val = f => k === "alerte" ? (alerte(f) ? ALERTS.findIndex(a => a[0] === alerte(f)) : 99)
+  const val = f => k === "flag" ? (f.flag === true ? 0 : 1) : k === "alerte" ? (alerte(f) ? ALERTS.findIndex(a => a[0] === alerte(f)) : 99)
     : k === "etape" ? etIdx(f.etape) : k === "prio" ? prioRank(f.prio)
     : k === "rdv" ? (f.dateRDV || "9999") : k === "relance" ? (f.relance || "9999") : String(f[k] || "").toLowerCase();
   return L.sort((a,b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * dir || prioRank(a.prio) - prioRank(b.prio); });
@@ -652,22 +711,23 @@ function viewFiches() {
         <select id="f-prio" aria-label="Priorité">${prioOpts(S.flt.prio, "Toutes priorités")}</select>
         <select id="f-resp" aria-label="Responsable">${opts(RESP, S.flt.resp, "Tous responsables")}</select>
         <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="f-open" ${S.flt.open === "1" ? "checked" : ""}> Masquer réalisés / refus</label>
+        ${SupaStore.hasFlag ? `<label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="f-flag" ${S.flt.flag ? "checked" : ""}> Flag uniquement</label>` : ""}
         <button class="btn small" id="f-reset">Effacer</button>
         <button class="btn primary small" id="new">+ Nouvelle fiche</button>
         <button class="btn small" id="print-list">Imprimer la liste</button>
         <span class="count num">${L.length} fiche(s)</span>
       </div>
       <div class="tablewrap"><table>
-        <thead><tr>${th("alerte","Alerte")}${th("soc","Société")}${th("zone","Zone")}${th("prio","Prio")}${th("etape","Étape")}${th("relance","Relance")}${th("rdv","RDV")}${th("resp","Resp.")}</tr></thead>
-        <tbody>${L.map(f => `<tr data-open="${esc(f.id)}" class="${String(S.sel) === String(f.id) ? "sel" : ""} ${closed(f) ? "closed" : ""}">
-          <td>${alHtml(alerte(f))}</td>
+        <thead><tr>${SupaStore.hasFlag ? th("flag","⚑") : ""}${th("alerte","Alerte")}${th("soc","Société")}${th("zone","Zone")}${th("prio","Prio")}${th("etape","Étape")}${th("relance","Relance")}${th("rdv","RDV")}${th("resp","Resp.")}</tr></thead>
+        <tbody>${L.map(f => `<tr data-open="${esc(f.id)}" class="${String(S.sel) === String(f.id) ? "sel" : ""} ${closed(f) ? "closed" : ""} ${f.flag === true ? "flag" : ""}">
+          ${SupaStore.hasFlag ? `<td style="width:40px">${flagBtn(f)}</td>` : ""}<td>${alHtml(alerte(f))}</td>
           <td class="soc">${esc(f.soc)}<small>${esc([f.contact, f.objet].filter(Boolean).join(" · "))}</small></td>
           <td class="num">${esc(zoneTxt(f))}</td><td>${prioHtml(f.prio)}</td><td>${pill(f.etape)}</td>
           <td class="num" style="${f.relance && f.relance <= isoToday() && !closed(f) ? "color:var(--crit);font-weight:700" : ""}">${fr(f.relance)}</td>
           <td class="num">${f.dateRDV ? fr(f.dateRDV) + (f.heure ? " " + esc(f.heure) : "") : ""}</td><td>${esc(f.resp)}</td></tr>`).join("")}</tbody>
       </table></div>
-      <div class="cards">${L.slice(0, 150).map(f => `<button class="card" data-open="${esc(f.id)}">
-          <span class="top-l"><span class="soc">${esc(f.soc)}</span>${prioHtml(f.prio)}</span>
+      <div class="cards">${L.slice(0, 150).map(f => `<button class="card ${f.flag === true ? "flag" : ""}" data-open="${esc(f.id)}">
+          <span class="top-l"><span class="soc">${f.flag === true ? "⚑ " : ""}${esc(f.soc)}</span>${prioHtml(f.prio)}</span>
           <span>${pill(f.etape)} ${alHtml(alerte(f))}</span>
           <span class="meta"><span>${esc(zoneTxt(f))}</span>${f.relance ? `<span>Relance ${fr(f.relance)}</span>` : ""}${f.dateRDV ? `<span>RDV ${fr(f.dateRDV)} ${esc(f.heure)}</span>` : ""}</span>
         </button>`).join("")}${L.length > 150 ? `<p class="empty">150 premières fiches affichées : affinez la recherche.</p>` : ""}</div>
@@ -683,7 +743,7 @@ function sheet() {
   const sel = (k, lab, list, cls = "") => `<div class="f ${cls}"><label for="d-${k}">${lab}</label><select id="d-${k}" data-k="${k}">${opts(list, f[k], "…")}</select></div>`;
   const ta = (k, lab) => `<div class="f full"><label for="d-${k}">${lab}</label><textarea id="d-${k}" data-k="${k}" rows="2">${esc(f[k])}</textarea></div>`;
   return `<aside class="sheet" aria-label="Fiche">
-    <div class="sheet-h"><div><h3>${esc(f.soc || "Nouvelle fiche")}</h3><small class="num">${esc(f.ref || (f.id ? "N° " + f.id : "Nouvelle fiche"))}${f.entree ? " · entrée le " + fr(f.entree) : ""}</small><div style="margin-top:6px">${pill(f.etape)} ${alHtml(a)}</div></div>
+    <div class="sheet-h"><div><h3>${esc(f.soc || "Nouvelle fiche")}</h3><small class="num">${esc(f.ref || (f.id ? "N° " + f.id : "Nouvelle fiche"))}${f.entree ? " · entrée le " + fr(f.entree) : ""}</small><div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">${pill(f.etape)} ${alHtml(a)}${SupaStore.hasFlag ? `<button class="btn small flag-toggle ${f.flag === true ? "on" : ""} w" id="d-flag" type="button" aria-pressed="${f.flag === true}">⚑ ${f.flag === true ? "Flag activé" : "Activer le flag"}</button>` : ""}</div></div>
       <button class="btn small" id="close" aria-label="Fermer la fiche">Fermer</button></div>
     <div class="sheet-b">
       <div><div class="lbl" style="margin-bottom:6px">Actions rapides</div><div class="quick">
@@ -709,8 +769,12 @@ function sheet() {
       <div><div class="lbl" style="margin-bottom:6px">Historique</div>
         <div class="note-row"><input id="note" placeholder="Ajouter une note datée (ex. pas joignable, rappeler jeudi)" aria-label="Nouvelle note"><button class="btn small" id="addnote">Ajouter</button></div>
         <div class="hist" style="margin-top:6px">${esc(f.hist) || "<span style='color:var(--muted)'>Aucun historique.</span>"}</div></div>
+      ${piecesBlock(f)}
       <fieldset><legend class="lbl">Société et contact</legend>
-        ${inp("soc","Société","text","full")}${inp("contact","Contact")}${sel("statut","Statut compte",["Client","Prospect","Ancien client"])}
+        ${inp("soc","Société","text","full")}
+        <div class="adr-row">${inp("contact","Contact")}<button class="btn small w" id="pick-open" type="button" aria-expanded="${S.pick}">Choisir dans le carnet</button></div>
+        ${S.pick ? pickerBlock(f) : ""}
+        ${sel("statut","Statut compte",["Client","Prospect","Ancien client"])}
         ${inp("tel","Téléphone","tel")}${inp("mail","Mail","email")}
         <div class="adr-row">${inp("adr","Adresse")}<button class="btn small" id="maps" type="button" title="Ouvrir l'adresse dans Google Maps">Localiser (Google Maps)</button></div>
         ${sel("pays","Pays",PAYS)}${inp("zone","Dpt / zone")}
@@ -730,6 +794,25 @@ function ficheOffres(f) {
       <span class="r-date num">${fr(o.dateOffre || o.entree).slice(0, 5)}<small>${esc(o.num || "")}</small></span>
       <span style="min-width:0"><span class="r-soc">${esc(eur(o.montantHT) ? eur(o.montantHT) + " HT" : o.nature || "Offre")}</span><span class="r-sub">${esc(o.objet)}</span></span>
       <span>${opill(o.statut)}</span></button>`).join("") || `<p class="empty">Aucune offre liée à cette fiche.</p>`}</div></div>`;
+}
+function flagBtn(f) { if (!SupaStore.hasFlag) return ""; return `<button class="flagbtn ${f.flag === true ? "on" : ""}" data-flag="${esc(f.id)}" title="${f.flag === true ? "Retirer le flag" : "Activer le flag"}" aria-label="${f.flag === true ? "Retirer le flag" : "Activer le flag"}" aria-pressed="${f.flag === true}" ${S.access === "lecture" ? "disabled" : ""}>${f.flag === true ? "⚑" : "⚐"}</button>`; }
+const taille = n => !n ? "" : n < 1024 ? n + " o" : n < 1048576 ? Math.round(n / 1024) + " Ko" : (n / 1048576).toFixed(1).replace(".", ",") + " Mo";
+function piecesBlock(f) {
+  const L = S.pieces.filter(x => String(x.ficheId) === String(f.id)).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  return `<div><div class="lbl" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px">Pièces jointes (${L.length})
+      ${f.id && !S.piecesKo ? `<label class="btn small filebtn w">Ajouter un fichier<input type="file" id="f-piece"></label>` : ""}</div>
+    ${S.piecesKo ? `<p class="empty">Pièces jointes en cours d'activation dans la base.</p>` : !f.id ? `<p class="empty">Enregistrez la fiche pour pouvoir y joindre des fichiers.</p>` : `<div class="rows">${L.map(pc => `<div class="row ct-row" style="cursor:default">
+      <button class="btn ghost small" data-piece="${esc(pc.id)}" style="justify-content:flex-start;white-space:normal;text-align:left;overflow-wrap:anywhere">${esc(pc.nom)}<small style="color:var(--muted);font-weight:400">&nbsp;· ${taille(+pc.taille)} · ${pc.createdAt ? fr(String(pc.createdAt).slice(0, 10)) : ""}${pc.createdBy ? " · " + esc(String(pc.createdBy).split("@")[0]) : ""}</small></button>
+      <button class="btn small ghost w" data-piece-del="${esc(pc.id)}" style="color:var(--crit)">${S.confirmPDel === pc.id ? "Confirmer" : "Supprimer"}</button></div>`).join("") || `<p class="empty">Aucune pièce jointe. 20 Mo maximum par fichier.</p>`}</div>`}</div>`;
+}
+const cname = c => [c.prenom, c.nom].filter(Boolean).join(" ");
+function contactMatch(c, q) { if (!q) return true; const t = normSoc([c.prenom, c.nom, c.societe, c.fonction, c.email, c.tel, c.mobile, c.ville].join(" ")); return normSoc(q).split(" ").filter(Boolean).every(w => t.includes(w)); }
+function pickerBlock(f) {
+  if (S.contactsKo) return `<div class="picker"><p class="empty">Carnet d'adresses indisponible : ${esc(S.contactsKo)}</p></div>`;
+  const q = S.pickQ, L = S.contacts.filter(c => contactMatch(c, q)).sort((a, b) => cname(a).localeCompare(cname(b))).slice(0, 30);
+  return `<div class="picker"><input type="search" id="pick-q" placeholder="Rechercher un nom, une société, un mail…" value="${esc(q)}" aria-label="Rechercher dans le carnet">
+    <div class="rows">${L.map(c => `<button class="row ct-row" data-pick="${esc(c.id)}" type="button"><span style="min-width:0"><span class="r-soc">${esc(cname(c) || c.societe || c.email)}</span><span class="r-sub">${esc([c.fonction, c.societe, c.mobile || c.tel, c.email].filter(Boolean).join(" · "))}</span></span><span class="btn small">Choisir</span></button>`).join("")
+      || `<p class="empty">${S.contacts.length ? "Aucun contact trouvé." : "Le carnet est vide : importez vos contacts Google dans l'onglet Carnet d'adresses."}</p>`}</div></div>`;
 }
 const rdvsIn = x => S.fiches.filter(f => f.etape === ETAPES[3] && f.dateRDV && f.dateRDV >= x.du && f.dateRDV <= (x.au || x.du))
   .sort((a, b) => (a.dateRDV + a.heure).localeCompare(b.dateRDV + b.heure));
@@ -1018,6 +1101,107 @@ function parseOffre(pages) {
   return o;
 }
 
+const PAYS_CODE = { belgique:"BE", belgium:"BE", "belgië":"BE", belgie:"BE", france:"FR", luxembourg:"LU", "pays-bas":"NL", netherlands:"NL", nederland:"NL", allemagne:"DE", germany:"DE", deutschland:"DE" };
+function parseCsv(text) {
+  text = text.replace(/^\ufeff/, "");
+  const first = text.split(/\r?\n/)[0] || "", sep = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ";" : ",";
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) { const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true; else if (c === sep) { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += c; }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim()));
+}
+function googleContacts(text) {
+  const R = parseCsv(text); if (R.length < 2) throw new Error("fichier vide ou non reconnu");
+  const H = R[0].map(h => h.trim().toLowerCase()), idx = n => H.indexOf(n);
+  const get = (r, ...names) => { for (const n of names) { const i = idx(n); if (i >= 0 && r[i] && r[i].trim()) return r[i].trim(); } return ""; };
+  const multi = s => s.split(":::").map(x => x.trim()).filter(Boolean);
+  if (!H.some(h => /^(first name|given name|name|e-mail 1 - value|organization name|organization 1 - name)$/.test(h))) throw new Error("ce n'est pas un export Google Contacts (format CSV Google)");
+  return R.slice(1).map(r => {
+    const c = { prenom: get(r, "first name", "given name"), nom: get(r, "last name", "family name"), societe: get(r, "organization name", "organization 1 - name"),
+      fonction: get(r, "organization title", "organization 1 - title"), notes: get(r, "notes"), source: "Google" };
+    if (!c.prenom && !c.nom) c.nom = get(r, "name", "file as", "nickname");
+    const mails = H.map((h, i) => /^e-?mail \d+ - value$/.test(h) ? r[i] || "" : "").flatMap(multi);
+    c.email = mails[0] || ""; c.email2 = mails[1] || "";
+    H.forEach((h, i) => { const m = h.match(/^phone (\d+) - value$/); if (!m || !r[i]) return;
+      const lab = (r[idx("phone " + m[1] + " - label")] || "").toLowerCase();
+      multi(r[i]).forEach(v => { if (/mobile|portable|gsm|cell/.test(lab) && !c.mobile) c.mobile = v; else if (!c.tel) c.tel = v; else if (!c.mobile) c.mobile = v; }); });
+    c.adresse = get(r, "address 1 - street") || get(r, "address 1 - formatted").replace(/\s*\n\s*/g, ", ");
+    c.cp = get(r, "address 1 - postal code"); c.ville = get(r, "address 1 - city");
+    const p = get(r, "address 1 - country"); c.pays = PAYS_CODE[p.toLowerCase()] || p;
+    c.groupes = multi(get(r, "labels", "group membership")).filter(g => !/^\* ?(mycontacts|starred)$/i.test(g)).join(", ");
+    return c;
+  }).filter(c => c.prenom || c.nom || c.societe || c.email);
+}
+const ckey = c => c.email ? "m:" + c.email.toLowerCase() : "n:" + normSoc([c.prenom, c.nom, c.societe].join(" "));
+function prepareImport(list) {
+  const byKey = new Map(S.contacts.map(c => [ckey(c), c])), seen = new Set(), out = []; let maj = 0, neuf = 0, dbl = 0;
+  list.forEach(c => { const k = ckey(c); if (seen.has(k)) { dbl++; return; } seen.add(k);
+    const ex = byKey.get(k);
+    if (ex) { const m = { ...ex }; let ch = false; Object.keys(CCOLS).forEach(f => { if (c[f] && c[f] !== ex[f]) { m[f] = c[f]; ch = true; } }); if (ch) { out.push(m); maj++; } }
+    else { out.push(c); neuf++; } });
+  return { rows: out, neuf, maj, dbl, total: list.length };
+}
+function cFiltered() { return S.contacts.filter(c => contactMatch(c, S.cq)).sort((a, b) => (a.nom || a.societe || "").localeCompare(b.nom || b.societe || "") || (a.prenom || "").localeCompare(b.prenom || "")); }
+function viewCarnet() {
+  if (S.contactsKo) return `<div class="panel"><b>Le carnet d'adresses n'est pas encore activé dans la base.</b><p class="demo-note">Détail : ${esc(S.contactsKo)}</p></div>`;
+  const L = cFiltered(), imp = S.cimport;
+  return `<div class="split ${S.csel ? "open" : ""}"><div style="min-width:0">
+    <div class="drop w"><span style="flex:1 1 300px">Import Google Contacts : contacts.google.com › Exporter › <b>CSV Google</b>, puis sélectionnez le fichier. Les contacts déjà présents (même mail, ou même nom et société) sont mis à jour, pas dupliqués.</span>
+      <label class="btn small primary filebtn">Importer un fichier .CSV<input type="file" id="c-import" accept=".csv,text/csv"></label>
+      <button class="btn small" id="cnew">+ Nouveau contact</button></div>
+    ${imp ? `<div class="panel" style="margin-bottom:12px;border-color:var(--accent)"><b>${esc(imp.file)}</b> : ${imp.total} contact(s) lu(s), <b>${imp.neuf}</b> nouveau(x), <b>${imp.maj}</b> mis à jour${imp.dbl ? ", " + imp.dbl + " doublon(s) ignoré(s) dans le fichier" : ""}.
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">${imp.rows.length ? `<button class="btn small primary" id="cimp-ok" ${imp.busy ? "disabled" : ""}>${imp.busy ? "Import en cours… " + esc(imp.prog || "") : "Importer " + imp.rows.length + " contact(s)"}</button>` : `<span>Rien à importer : le carnet est déjà à jour.</span>`}<button class="btn small" id="cimp-no" ${imp.busy ? "disabled" : ""}>Annuler</button></div></div>` : ""}
+    <div class="filters">
+      <input type="search" id="cq" placeholder="Rechercher nom, société, fonction, mail, téléphone, ville…" value="${esc(S.cq)}" aria-label="Rechercher un contact">
+      <button class="btn small" id="cexport">Exporter (CSV)</button>
+      <span class="count num">${L.length} / ${S.contacts.length} contact(s)</span>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Nom</th><th>Société</th><th>Fonction</th><th>Téléphone</th><th>Mail</th><th>Ville</th></tr></thead>
+      <tbody>${L.slice(0, 500).map(c => `<tr data-copen="${esc(c.id)}" class="${String(S.csel) === String(c.id) ? "sel" : ""}">
+        <td class="soc">${esc(cname(c) || "(sans nom)")}</td><td>${esc(c.societe)}</td><td>${esc(c.fonction)}</td>
+        <td class="num" style="white-space:nowrap">${esc(c.mobile || c.tel)}</td><td style="overflow-wrap:anywhere">${esc(c.email)}</td><td>${esc(c.ville)}</td></tr>`).join("")
+        || `<tr><td colspan="6" class="empty">${S.contacts.length ? "Aucun contact trouvé." : "Carnet vide : importez votre export Google Contacts (.CSV)."}</td></tr>`}</tbody>
+    </table></div>
+    <div class="cards">${L.slice(0, 150).map(c => `<button class="card" data-copen="${esc(c.id)}"><span class="top-l"><span class="soc">${esc(cname(c) || c.societe)}</span></span>
+      <span class="meta"><span>${esc(c.societe)}</span><span>${esc(c.mobile || c.tel)}</span></span></button>`).join("")}</div>
+    ${L.length > 500 ? `<p class="empty">500 premiers contacts affichés : affinez la recherche.</p>` : ""}
+  </div>${S.csel ? cSheet() : ""}</div>`;
+}
+function cSheet() {
+  const c = S.cdraft; if (!c) return "";
+  const inp = (k, lab, type = "text", cls = "") => `<div class="f ${cls}"><label for="c-${k}">${lab}</label><input id="c-${k}" data-ck="${k}" type="${type}" value="${esc(c[k])}"></div>`;
+  const nc = normSoc(c.societe), em = (c.email || "").toLowerCase();
+  const F = c.id ? S.fiches.filter(f => (em && String(f.mail || "").toLowerCase() === em) || (nc && normSoc(f.soc) === nc)).slice(0, 20) : [];
+  return `<aside class="sheet" aria-label="Contact">
+    <div class="sheet-h"><div><h3>${esc(cname(c) || c.societe || "Nouveau contact")}</h3><small>${esc([c.fonction, c.societe].filter(Boolean).join(" · "))}</small></div>
+      <button class="btn small" id="cclose">Fermer</button></div>
+    <div class="sheet-b">
+      <fieldset><legend class="lbl">Contact</legend>
+        ${inp("prenom","Prénom")}${inp("nom","Nom")}${inp("societe","Société","text","full")}${inp("fonction","Fonction","text","full")}
+        ${inp("mobile","Mobile","tel")}${inp("tel","Téléphone","tel")}${inp("email","Mail","email")}${inp("email2","Mail 2","email")}
+        ${inp("adresse","Adresse","text","full")}${inp("cp","Code postal")}${inp("ville","Ville")}${inp("pays","Pays")}${inp("groupes","Libellés")}
+        <div class="f full"><label for="c-notes">Notes</label><textarea id="c-notes" data-ck="notes" rows="3">${esc(c.notes)}</textarea></div>
+      </fieldset>
+      ${c.id ? `<div><div class="lbl" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px">Fiches RDV de la société (${F.length})<button class="btn small w" id="c-newfiche" type="button">+ Fiche RDV pour ce contact</button></div>
+        <div class="rows">${F.map(f => `<button class="row" data-open-f="${esc(f.id)}" style="grid-template-columns:minmax(0,1fr) auto"><span style="min-width:0"><span class="r-soc">${esc(f.soc)}</span><span class="r-sub">${esc([f.contact, zoneTxt(f)].filter(Boolean).join(" · "))}</span></span><span>${pill(f.etape)}</span></button>`).join("") || `<p class="empty">Aucune fiche pour cette société.</p>`}</div></div>` : ""}
+    </div>
+    <div class="sheet-f"><span class="stamp">${c.modif ? "Modifié le " + esc(c.modif) : c.id ? "" : "Non enregistré"}</span>
+      <span style="display:flex;gap:8px;flex-wrap:wrap">${c.id ? (S.confirmCDel === c.id ? `<button class="btn small w" id="cdel-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="cdel-no">Garder</button>` : `<button class="btn small ghost w" id="cdel" style="color:var(--crit)">Supprimer</button>`) : ""}<button class="btn small" id="ccancel">Annuler</button><button class="btn primary small w" id="csave">Enregistrer</button></span></div>
+  </aside>`;
+}
+function readCDraft() { document.querySelectorAll("[data-ck]").forEach(el => { S.cdraft[el.dataset.ck] = el.value; }); }
+function contactsCsv() {
+  const keys = Object.keys(CCOLS), head = ["Prénom","Nom","Société","Fonction","Mail","Mail 2","Téléphone","Mobile","Adresse","Code postal","Ville","Pays","Notes","Libellés","Source"];
+  const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+  const lines = [head.map(q).join(";")].concat(S.contacts.map(c => keys.map(k => q(c[k])).join(";")));
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
+  a.download = "Carnet_adresses_" + isoToday() + ".csv"; document.body.appendChild(a); a.click(); a.remove();
+}
 const MOIS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
 const agRdv = () => S.fiches.filter(f => f.dateRDV && (f.etape === ETAPES[3] || f.etape === ETAPES[4]))
   .sort((a, b) => (a.dateRDV + (a.heure || "")).localeCompare(b.dateRDV + (b.heure || "")));
@@ -1137,11 +1321,11 @@ function usersPanel() {
 const JLABEL = { soc:"Société", ref:"Réf.", contact:"Contact", tel:"Téléphone", mail:"Mail", adr:"Adresse", pays:"Pays", zone:"Zone", statut:"Statut",
   prio:"Priorité", objet:"Objet", consigne:"Consigne", resp:"Responsable", etape:"Étape", nb:"Tentatives", last:"Dernier contact", relance:"Relance",
   date_rdv:"Date RDV", heure:"Heure", duree:"Durée", lieu:"Lieu", agenda:"Agenda Outlook", hist:"Historique", entree:"Date d'entrée",
-  du:"Du", au:"Au", dispo:"Disponibilité", event_id:"ID événement", synchro:"Synchro",
+  flag:"Flag", du:"Du", au:"Au", dispo:"Disponibilité", event_id:"ID événement", synchro:"Synchro",
   num:"N° offre", date_offre:"Date offre", client_num:"N° client", projet:"Projet", tva:"TVA", nature:"Nature", lignes:"Lignes", montant_ht:"Montant HT",
   montant_ttc:"Montant TTC", validite:"Validité", paiement:"Paiement", livraison:"Livraison", delai:"Délai", contact_mgh:"Contact MGH",
   date_target:"Date target", dernier_appel:"Dernier appel", proba:"Probabilité", motif:"Commentaire", fiche_id:"Fiche liée", pdf_path:"PDF", pdf_nom:"Nom du PDF" };
-const JOBJ = { fiche: ["Nouvelle fiche", "Fiche supprimée"], tournee: ["Nouvelle tournée", "Tournée supprimée"], offre: ["Nouvelle offre", "Offre supprimée"] };
+const JOBJ = { piece: ["Pièce jointe ajoutée", "Pièce jointe supprimée"], fiche: ["Nouvelle fiche", "Fiche supprimée"], tournee: ["Nouvelle tournée", "Tournée supprimée"], offre: ["Nouvelle offre", "Offre supprimée"] };
 const JACT = { connexion:"Connexion", creation:"Création", modification:"Modification", suppression:"Suppression" };
 const jval = v => v === null || v === undefined || v === "" ? "vide" : /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? fr(String(v)) : String(v);
 function jdetail(r) {
@@ -1167,7 +1351,7 @@ function journalPanel() {
     <div class="tablewrap"><table><thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Objet</th><th>Détail</th></tr></thead><tbody>
     ${J.map(r => `<tr style="cursor:default"><td class="num" style="white-space:nowrap">${jdate(r.at)}</td><td>${esc(r.email || "?")}</td>
       <td><span class="al ${r.action === "suppression" ? "crit" : r.action === "connexion" ? "" : "info"}">${JACT[r.action] || esc(r.action)}</span></td>
-      <td>${r.objet === "session" ? "" : (r.objet === "fiche" && r.action !== "suppression" ? `<button class="btn small ghost" data-open-f="${esc(r.record_id)}">${esc(r.libelle || "Fiche")}</button>`
+      <td>${r.objet === "session" ? "" : r.objet === "piece" ? `<button class="btn small ghost" data-open-f="${esc(r.record_id)}">Fiche · ${esc(r.libelle || "")}</button>` : (r.objet === "fiche" && r.action !== "suppression" ? `<button class="btn small ghost" data-open-f="${esc(r.record_id)}">${esc(r.libelle || "Fiche")}</button>`
         : r.objet === "offre" && r.action !== "suppression" ? `<button class="btn small ghost" data-open-o="${esc(r.record_id)}">Offre ${esc(r.libelle || "")}</button>` : esc((r.objet === "tournee" ? "Tournée " : r.objet === "offre" ? "Offre " : "") + (r.libelle || "")))}</td>
       <td style="min-width:260px">${esc(jdetail(r))}</td></tr>`).join("") || `<tr><td colspan="5" class="empty">Aucune activité sur cette période.</td></tr>`}
     </tbody></table></div></section>`;
@@ -1204,10 +1388,10 @@ function sauvegardePanel() {
 async function loadUsers() { try { S.users = await SupaStore.listUsers(); } catch (e) { S.users = []; toast("Liste des utilisateurs indisponible : " + e.message); } }
 function applyReadOnly() {
   if (S.access !== "lecture") return;
-  $app.querySelectorAll(".w, #new, #save, #del, .quick, .note-row, #tform, #tsave, #tdel, #inst-file, #odrop, #osave, #odel").forEach(el => {
+  $app.querySelectorAll(".w, #new, #save, #del, .quick, .note-row, #tform, #tsave, #tdel, #inst-file, #odrop, #osave, #odel, #picker").forEach(el => {
     const box = el.closest(".panel") && el.id === "tform" ? el.closest(".panel") : el.closest(".quick")?.parentElement || el;
     box.hidden = true; });
-  $app.querySelectorAll("[data-k], [data-tk], [data-ok]").forEach(el => { el.disabled = true; });
+  $app.querySelectorAll("[data-k], [data-tk], [data-ok], [data-ck]").forEach(el => { el.disabled = true; });
 }
 function viewLogin(msg) {
   return `<div style="max-width:440px;margin:40px auto" class="panel">
@@ -1237,7 +1421,7 @@ function printHead(title, sub) {
 function printList() {
   const L = filtered(), F = S.flt;
   const crit = [F.q && "recherche « " + F.q + " »", F.etape, F.alerte && (F.alerte === "*" ? "avec alerte" : F.alerte), F.pays, F.prio && "priorité " + prioLbl(F.prio), F.resp, F.open === "1" && !F.etape && "réalisés et refus masqués"].filter(Boolean);
-  const rows = L.map(f => `<tr><td><b>${esc(f.soc)}</b>${f.ref ? "<br><span style='color:#6B6E74'>" + esc(f.ref) + "</span>" : ""}</td><td>${esc(f.contact)}</td><td>${esc(f.tel)}</td>
+  const rows = L.map(f => `<tr${f.flag === true ? ' style="background:#FBF0DF"' : ""}><td><b>${f.flag === true ? "⚑ " : ""}${esc(f.soc)}</b>${f.ref ? "<br><span style='color:#6B6E74'>" + esc(f.ref) + "</span>" : ""}</td><td>${esc(f.contact)}</td><td>${esc(f.tel)}</td>
     <td>${esc([f.pays, f.zone].filter(Boolean).join(" · "))}</td><td>${esc(prioLbl(f.prio))}</td><td>${esc(f.etape)}</td><td>${esc(alerte(f))}</td>
     <td>${fr(f.relance)}</td><td>${f.dateRDV ? fr(f.dateRDV) + " " + esc(f.heure) : ""}</td><td>${esc(f.resp)}</td><td>${esc(f.objet)}</td></tr>`).join("");
   doPrint(printHead("Suivi des rendez-vous · liste des fiches", "Imprimé le " + fr(isoToday()) + " · " + L.length + " fiche(s)" + (crit.length ? " · " + crit.join(", ") : "")) +
@@ -1293,10 +1477,10 @@ function printOffre(o) {
     <p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "portrait");
 }
 function csvExport() {
-  const keys = ["ref","soc","contact","tel","mail","adr","pays","zone","statut","prio","objet","consigne","resp","etape","nb","last","relance","dateRDV","heure","duree","lieu","hist","entree"];
-  const head = ["Réf.","Société","Contact","Téléphone","Mail","Adresse","Pays","Dpt / zone","Statut compte","Priorité","Objet du RDV","Consigne Damien","Responsable","Étape","Nb tentatives","Dernier contact","Prochaine relance","Date RDV","Heure","Durée (h)","Lieu / format","Historique","Date d'entrée"];
+  const keys = ["ref","flag","soc","contact","tel","mail","adr","pays","zone","statut","prio","objet","consigne","resp","etape","nb","last","relance","dateRDV","heure","duree","lieu","hist","entree"];
+  const head = ["Réf.","Flag","Société","Contact","Téléphone","Mail","Adresse","Pays","Dpt / zone","Statut compte","Priorité","Objet du RDV","Consigne Damien","Responsable","Étape","Nb tentatives","Dernier contact","Prochaine relance","Date RDV","Heure","Durée (h)","Lieu / format","Historique","Date d'entrée"];
   const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
-  const lines = [head.map(q).join(";")].concat(S.fiches.map(f => keys.map(k => q(k === "prio" ? prioLbl(f[k]) : f[k])).join(";")));
+  const lines = [head.map(q).join(";")].concat(S.fiches.map(f => keys.map(k => q(k === "prio" ? prioLbl(f[k]) : k === "flag" ? (f.flag === true ? "oui" : "") : f[k])).join(";")));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
   a.download = "Suivi_RDV_" + isoToday() + ".csv"; document.body.appendChild(a); a.click(); a.remove();
@@ -1337,13 +1521,13 @@ function render() {
 
   const sc = window.scrollY;
   if (S.needsLogin || S.notMember) { $app.innerHTML = viewLogin(S.notMember ? "L'adresse " + SupaStore.user + " n'est pas autorisée. Demandez à Damien de l'ajouter." : S.loginMsg); return; }
-  $app.innerHTML = S.view === "dash" ? viewDash() : S.view === "fiches" ? viewFiches() : S.view === "offres" ? viewOffres() : S.view === "agenda" ? viewAgenda() : S.view === "tournees" ? viewTournees() : viewSetup();
+  $app.innerHTML = S.view === "dash" ? viewDash() : S.view === "fiches" ? viewFiches() : S.view === "offres" ? viewOffres() : S.view === "agenda" ? viewAgenda() : S.view === "carnet" ? viewCarnet() : S.view === "tournees" ? viewTournees() : viewSetup();
   applyReadOnly();
   const m = document.getElementById("mode"); if (m) { m.textContent = S.access === "lecture" ? "LECTURE SEULE" : "EN LIGNE"; m.classList.toggle("live", S.access !== "lecture"); }
   window.scrollTo(0, sc);
 }
-function go(view) { if (view === "setup" && SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal(), loadSauvegarde()]).then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } if (view !== "offres") { S.osel = null; S.odraft = null; S.opendingFile = null; } render(); window.scrollTo(0,0); }
-function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.back = S.view === "agenda" ? "agenda" : S.view === "offres" && S.osel ? "offres" : null; S.sel = id; S.draft = {...f}; S.view = "fiches"; render(); }
+function go(view) { if (view === "setup" && SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal(), loadSauvegarde()]).then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } if (view !== "offres") { S.osel = null; S.odraft = null; S.opendingFile = null; } if (view !== "carnet") { S.csel = null; S.cdraft = null; } S.pick = false; render(); window.scrollTo(0,0); }
+function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.back = S.view === "agenda" ? "agenda" : S.view === "offres" && S.osel ? "offres" : null; S.sel = id; S.draft = {...f}; S.pick = false; S.confirmPDel = null; S.view = "fiches"; render(); }
 function newFiche() { S.sel = "__new"; S.draft = { id:"", soc:"", contact:"", tel:"", mail:"", adr:"", pays:"", zone:"", statut:"Prospect", prio:2, objet:"", consigne:"",
   resp:"Vit'Admin", etape:ETAPES[0], nb:0, last:"", relance:"", dateRDV:"", heure:"", duree:"", lieu:"", agenda:"", hist:"", entree:"", modif:"" }; render(); setTimeout(() => document.getElementById("d-soc")?.focus(), 0); }
 function note(txt) { const d = S.draft; d.hist = frShort(isoToday()) + " " + S.role + " : " + txt + (d.hist ? "\n" + d.hist : ""); }
@@ -1355,7 +1539,42 @@ document.getElementById("role").addEventListener("click", e => { const b = e.tar
 
 $app.addEventListener("click", async e => {
   const t = e.target;
+  const fl = t.closest("[data-flag]"); if (fl) { e.stopPropagation(); if (S.access === "lecture") return;
+    const f = S.fiches.find(x => String(x.id) === String(fl.dataset.flag)); if (!f) return;
+    try { const saved = await Store.saveFiche({ ...f, flag: f.flag !== true }, S); if (S.draft && String(S.draft.id) === String(saved.id)) S.draft.flag = saved.flag; render(); toast(saved.flag === true ? "Flag activé : " + saved.soc : "Flag retiré : " + saved.soc); }
+    catch (err) { toast("Flag impossible : " + err.message); } return; }
   const o = t.closest("[data-open]"); if (o && !t.closest(".sheet")) { openFiche(o.dataset.open); return; }
+  if (t.closest("#d-flag")) { readDraft(); S.draft.flag = S.draft.flag !== true; render(); toast(S.draft.flag ? "Flag activé : enregistrez la fiche" : "Flag retiré : enregistrez la fiche"); return; }
+  if (t.id === "pick-open") { readDraft(); S.pick = !S.pick; if (S.pick && !S.pickQ) S.pickQ = S.draft.soc || ""; render(); if (S.pick) setTimeout(() => { const q = document.getElementById("pick-q"); if (q) { q.focus(); q.select(); } }, 0); return; }
+  const pk = t.closest("[data-pick]"); if (pk) { readDraft(); const c = S.contacts.find(x => String(x.id) === String(pk.dataset.pick)); if (!c) return; const d = S.draft;
+    d.contact = cname(c) || d.contact; if (c.mobile || c.tel) d.tel = c.mobile || c.tel; if (c.email) d.mail = c.email;
+    if (!d.soc && c.societe) d.soc = c.societe;
+    const ad = [c.adresse, [c.cp, c.ville].filter(Boolean).join(" ")].filter(Boolean).join(", "); if (ad && (!d.adr || !String(d.adr).trim())) d.adr = ad;
+    if (!d.pays && PAYS.includes(c.pays)) d.pays = c.pays;
+    S.pick = false; S.pickQ = ""; render(); toast("Contact repris du carnet : enregistrez la fiche"); return; }
+  const pc = t.closest("[data-piece]"); if (pc) { const x = S.pieces.find(y => String(y.id) === String(pc.dataset.piece)); if (!x) return; const w = window.open("", "_blank");
+    try { const u = await SupaStore.pieceUrl(x.path); if (w) w.location = u; else location.href = u; } catch (err) { if (w) w.close(); toast("Fichier indisponible : " + err.message); } return; }
+  const pd = t.closest("[data-piece-del]"); if (pd) { const x = S.pieces.find(y => String(y.id) === String(pd.dataset.pieceDel)); if (!x) return;
+    if (S.confirmPDel !== x.id) { S.confirmPDel = x.id; readDraft(); render(); return; }
+    try { readDraft(); await SupaStore.deletePiece(x, S); S.confirmPDel = null; toast("Pièce jointe supprimée : " + x.nom); render(); } catch (err) { toast("Suppression impossible : " + err.message); } return; }
+  const co = t.closest("[data-copen]"); if (co && !t.closest(".sheet")) { const c = S.contacts.find(x => String(x.id) === String(co.dataset.copen)); if (c) { S.csel = c.id; S.cdraft = { ...c }; S.confirmCDel = null; render(); } return; }
+  if (t.id === "cnew") { S.csel = "__new"; S.cdraft = Object.fromEntries(Object.keys(CCOLS).map(k => [k, ""])); S.cdraft.source = "Saisie"; render(); setTimeout(() => document.getElementById("c-prenom")?.focus(), 0); return; }
+  if (t.id === "cclose" || t.id === "ccancel") { S.csel = null; S.cdraft = null; render(); return; }
+  if (t.id === "csave") { readCDraft(); const c = S.cdraft;
+    if (!(c.prenom || c.nom || c.societe || c.email).trim()) { toast("Indiquez au moins un nom, une société ou un mail"); return; }
+    try { const saved = await SupaStore.saveContact({ ...c }, S); S.csel = saved.id; S.cdraft = { ...saved }; toast("Contact enregistré"); render(); } catch (err) { toast("Enregistrement impossible : " + err.message); } return; }
+  if (t.id === "cdel") { S.confirmCDel = S.cdraft.id; render(); return; }
+  if (t.id === "cdel-no") { S.confirmCDel = null; render(); return; }
+  if (t.id === "cdel-ok") { const c = S.cdraft; try { await SupaStore.deleteContact(c.id, S); S.csel = null; S.cdraft = null; S.confirmCDel = null; toast("Contact supprimé"); render(); } catch (err) { toast("Suppression impossible : " + err.message); } return; }
+  if (t.id === "c-newfiche") { readCDraft(); const c = S.cdraft; S.csel = null; S.cdraft = null; S.view = "fiches"; newFiche();
+    Object.assign(S.draft, { soc: c.societe || "", contact: cname(c), tel: c.mobile || c.tel || "", mail: c.email || "", adr: [c.adresse, [c.cp, c.ville].filter(Boolean).join(" ")].filter(Boolean).join(", "), pays: PAYS.includes(c.pays) ? c.pays : "" });
+    render(); return; }
+  if (t.id === "cexport") { contactsCsv(); toast("Carnet exporté"); return; }
+  if (t.id === "cimp-no") { S.cimport = null; render(); return; }
+  if (t.id === "cimp-ok") { const imp = S.cimport; if (!imp || imp.busy) return; imp.busy = true; render();
+    try { await SupaStore.importContacts(imp.rows, m => { imp.prog = m; const b = document.getElementById("cimp-ok"); if (b) b.textContent = "Import en cours… " + m; });
+      S.contacts = (await SupaStore.all("contacts")).map(r => SupaStore.fromDb(r, CCOLS)); S.cimport = null; toast(imp.neuf + " contact(s) ajouté(s), " + imp.maj + " mis à jour"); render(); }
+    catch (err) { imp.busy = false; render(); toast("Import interrompu : " + err.message); } return; }
   const oo = t.closest("[data-open-o]"); if (oo && !(t.closest(".sheet") && S.view === "offres")) { openOffre(oo.dataset.openO); return; }
   const og = t.closest("[data-ogo-alerte],[data-ogo-statut]"); if (og) { Object.assign(S.oflt, { alerte: og.dataset.ogoAlerte || "", statut: og.dataset.ogoStatut || "", q: "" }); go("offres"); return; }
   const os = t.closest("[data-osort]"); if (os) { const k = os.dataset.osort; S.osort = [k, S.osort[0] === k ? -S.osort[1] : 1]; render(); return; }
@@ -1406,7 +1625,7 @@ $app.addEventListener("click", async e => {
   const ga = t.closest("[data-goto-alerte]"); if (ga) { Object.assign(S.flt, { alerte: ga.dataset.gotoAlerte, etape: "", q: "" }); saveUi(); go("fiches"); return; }
   const gv = t.closest("[data-view-go]"); if (gv) { go(gv.dataset.viewGo); return; }
   const so = t.closest("[data-sort]"); if (so) { const k = so.dataset.sort; S.sort = [k, S.sort[0] === k ? -S.sort[1] : 1]; render(); return; }
-  if (t.id === "f-reset") { S.flt = { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1" }; saveUi(); render(); return; }
+  if (t.id === "f-reset") { S.flt = { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1", flag: "" }; saveUi(); render(); return; }
   if (t.id === "new") { newFiche(); return; }
   if (t.id === "close" || t.id === "cancel") { S.sel = null; S.draft = null; S.pending = false; if (S.back) { S.view = S.back; S.back = null; } render(); return; }
   if (t.id === "del") { S.confirmDel = S.draft.id; render(); return; }
@@ -1483,6 +1702,8 @@ $app.addEventListener("click", async e => {
 });
 $app.addEventListener("input", e => {
   const t = e.target;
+  if (t.id === "cq" || t.id === "pick-q") { const id = t.id; if (id === "cq") S.cq = t.value; else S.pickQ = t.value; if (id === "pick-q") readDraft();
+    clearTimeout(render.h); render.h = setTimeout(() => { render(); const q = document.getElementById(id); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 180); }
   if (t.id === "oq") { S.oflt.q = t.value; clearTimeout(render.h); render.h = setTimeout(() => { render(); const q = document.getElementById("oq"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 180); }
   if (t.id === "q") { S.flt.q = t.value; clearTimeout(render.h); render.h = setTimeout(() => { saveUi(); render(); const q = document.getElementById("q"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 180); }
 });
@@ -1494,6 +1715,14 @@ $app.addEventListener("change", async e => {
       Object.assign(S, await Store.load()); log("Terminé : " + n + " fiches importées."); render(); }
     catch (err) { log("Erreur : " + err.message); inp.disabled = false; }
     return; }
+  if (e.target.id === "f-flag") { S.flt.flag = e.target.checked ? "1" : ""; saveUi(); render(); return; }
+  if (e.target.id === "f-piece" && e.target.files[0]) { const file = e.target.files[0]; readDraft();
+    if (file.size > 20 * 1048576) { toast("Fichier trop volumineux (20 Mo maximum)"); return; }
+    try { toast("Envoi de " + file.name + "…"); await SupaStore.addPiece(file, S.draft.id, S); toast("Pièce jointe ajoutée : " + file.name); render(); }
+    catch (err) { toast("Envoi impossible : " + err.message); } return; }
+  if (e.target.id === "c-import" && e.target.files[0]) { const file = e.target.files[0];
+    try { const list = googleContacts(await file.text()); S.cimport = { file: file.name, ...prepareImport(list) }; render(); }
+    catch (err) { toast("Import impossible : " + err.message); } e.target.value = ""; return; }
   if ((e.target.id === "o-import" || e.target.id === "o-file") && e.target.files[0]) { const attach = e.target.id === "o-file"; if (attach) readODraft(); await importOffrePdf(e.target.files[0], attach); return; }
   const omap = { "of-statut":"statut", "of-alerte":"alerte", "of-resp":"resp" };
   if (omap[e.target.id]) { S.oflt[omap[e.target.id]] = e.target.value; render(); return; }
@@ -1538,13 +1767,15 @@ $app.addEventListener("submit", async e => {
   catch (err) { toast("Enregistrement impossible : " + err.message); }
 });
 document.addEventListener("keydown", e => { if (e.key !== "Escape") return;
+  if (S.pick) { S.pick = false; render(); return; }
+  if (S.csel) { S.csel = null; S.cdraft = null; render(); return; }
   if (S.sel) { S.sel = null; S.draft = null; if (S.back) { S.view = S.back; S.back = null; } render(); }
   else if (S.osel) { S.osel = null; S.odraft = null; S.opendingFile = null; render(); } });
 
 (async () => {
   try { Object.assign(S, await Store.load()); }
   catch (err) { $app.innerHTML = `<div class="panel"><b>Connexion à la base impossible.</b><p>${esc(err.message)}</p><p>Vérifiez votre connexion internet puis rechargez la page.</p></div>`; return; }
-  if (["#fiches", "#offres", "#agenda", "#tournees"].includes(location.hash)) S.view = location.hash.slice(1);
+  if (["#fiches", "#offres", "#agenda", "#carnet", "#tournees"].includes(location.hash)) S.view = location.hash.slice(1);
   boot2();
   render();
 })();
@@ -1553,10 +1784,11 @@ function boot2() {
   if (!S.fiches.length) S.view = "setup";
   if (SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal(), loadSauvegarde()]).then(() => { if (S.view === "setup") render(); });
   SupaStore.live((table, p) => {
-    const map = table === "fiches" ? COLS : table === "offres" ? OCOLS : TCOLS, list = table === "fiches" ? S.fiches : table === "offres" ? S.offres : S.tournees;
+    const map = { fiches: COLS, offres: OCOLS, contacts: CCOLS, pieces: PCOLS }[table] || TCOLS, list = { fiches: S.fiches, offres: S.offres, contacts: S.contacts, pieces: S.pieces }[table] || S.tournees;
     if (p.eventType === "DELETE") { const i = list.findIndex(x => x.id === p.old.id); if (i >= 0) list.splice(i, 1); }
     else { const o = SupaStore.fromDb(p.new, map); const i = list.findIndex(x => x.id === o.id); if (i >= 0) list[i] = o; else list.unshift(o); }
-    if (S.sel || S.osel) { S.pending = true; } else render();
+    if (table === "pieces" && S.sel) { render(); return; }
+    if (S.sel || S.osel || S.csel || (table === "contacts" && S.cimport)) { S.pending = true; } else render();
   });
 }
 </script>

@@ -7,6 +7,13 @@
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}img{max-width:100%}</style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
 <title>Suivi RDV MGH</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#24346C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Suivi RDV">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600&display=swap">
@@ -224,6 +231,19 @@ tr.flag>td{background:var(--warn-soft)}tr.flag>td:first-child{box-shadow:inset 4
 .picker{grid-column:1/-1;border:1px solid var(--line);border-radius:4px;padding:10px;background:var(--surface-2);display:grid;gap:8px}
 .picker .rows{max-height:280px;overflow:auto}
 .ct-row{grid-template-columns:minmax(0,1fr) auto!important}
+.hist-l{display:block}.hist-l .t{display:inline-block;font-family:var(--f-cond);font-weight:600;font-size:12px;padding:0 6px;border-radius:2px;margin-right:4px;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+.hist-l .t.Appel{color:var(--accent);border-color:var(--accent)}.hist-l .t.Sans{color:var(--warn);border-color:var(--warn)}.hist-l .t.Mail{color:#5468A8;border-color:#5468A8}
+.hist-l .t.RDV,.hist-l .t.Visite{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}.hist-l .t.Offre{color:var(--ok);border-color:var(--ok)}
+.mails{display:flex;flex-wrap:wrap;gap:6px}
+.intl{grid-column:1/-1;display:grid;gap:8px}
+.intl-row{display:grid;grid-template-columns:1.2fr 1fr 1fr 1.3fr auto;gap:6px;align-items:end;padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--surface-2)}
+@media (max-width:700px){.intl-row{grid-template-columns:1fr 1fr}}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.act td,.act th{text-align:right}.act td:first-child,.act th:first-child{text-align:left}
+#fmap{height:calc(100vh - var(--hdr) - 190px);min-height:420px;border:1px solid var(--line);border-radius:4px;background:var(--surface-2)}
+.map-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted);margin-top:8px;align-items:center}
+.map-legend .sw{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.leaflet-popup-content{font-family:var(--f-body);font-size:13px;line-height:1.4}.leaflet-popup-content b{font-size:14px}
 @media print{
   body::before,header.top,main,#toast{display:none!important}
   :root{padding:0!important}
@@ -396,7 +416,8 @@ const DemoStore = {
 // ===== Stockage Supabase =====
 const COLS = { soc:"soc", ref:"ref", contact:"contact", tel:"tel", mail:"mail", adr:"adr", pays:"pays", zone:"zone", statut:"statut",
   prio:"prio", objet:"objet", consigne:"consigne", resp:"resp", etape:"etape", nb:"nb", last:"last", relance:"relance",
-  dateRDV:"date_rdv", heure:"heure", duree:"duree", lieu:"lieu", agenda:"agenda", hist:"hist", entree:"entree", flag:"flag" };
+  dateRDV:"date_rdv", heure:"heure", duree:"duree", lieu:"lieu", agenda:"agenda", hist:"hist", entree:"entree", flag:"flag", interlocuteurs:"interlocuteurs", lat:"lat", lng:"lng", geo:"geo" };
+const JSONS = ["interlocuteurs"];
 const CCOLS = { prenom:"prenom", nom:"nom", societe:"societe", fonction:"fonction", email:"email", email2:"email2", tel:"tel", mobile:"mobile",
   adresse:"adresse", cp:"cp", ville:"ville", pays:"pays", notes:"notes", groupes:"groupes", source:"source" };
 const PCOLS = { ficheId:"fiche_id", nom:"nom", path:"path", taille:"taille", type:"type", createdAt:"created_at", createdBy:"created_by" };
@@ -407,7 +428,7 @@ const OCOLS = { num:"num", dateOffre:"date_offre", clientNum:"client_num", proje
   validite:"validite", paiement:"paiement", livraison:"livraison", delai:"delai", contactMgh:"contact_mgh", statut:"statut", resp:"resp",
   target:"date_target", appel:"dernier_appel", relance:"relance", proba:"proba", motif:"motif", ficheId:"fiche_id", hist:"hist",
   pdfPath:"pdf_path", pdfNom:"pdf_nom", entree:"entree" };
-const NUMS = ["prio","nb","duree","montantHT","montantTTC","proba","ficheId"], DATES = ["last","relance","dateRDV","entree","du","au","dateOffre","validite","target","appel"];
+const NUMS = ["prio","nb","duree","montantHT","montantTTC","proba","ficheId","lat","lng"], DATES = ["last","relance","dateRDV","entree","du","au","dateOffre","validite","target","appel"];
 let sb = null;
 const SupaStore = {
   user: "",
@@ -421,9 +442,10 @@ const SupaStore = {
   toDb(o, map) {
     const r = {};
     for (const [k, c] of Object.entries(map)) {
-      if (k === "agenda" || !(k in o) || (k === "flag" && !SupaStore.hasFlag)) continue;
+      if (k === "agenda" || !(k in o) || (map === COLS && !SupaStore.hasCol(c))) continue;
       let v = o[k];
-      if (BOOLS.includes(k)) v = v === true || v === "true";
+      if (JSONS.includes(k)) v = Array.isArray(v) ? v.filter(x => x && Object.values(x).some(y => String(y || "").trim())) : [];
+      else if (BOOLS.includes(k)) v = v === true || v === "true";
       else if (NUMS.includes(k)) v = v === "" || v === null || isNaN(+v) ? null : +v;
       else if (DATES.includes(k)) v = v ? String(v).slice(0,10) : null;
       else v = v === "" || v === null ? null : String(v);
@@ -450,7 +472,7 @@ const SupaStore = {
     let offres = [], offresKo = "";
     try { offres = (await this.all("offres")).map(r => this.fromDb(r, OCOLS)); } catch (e) { offresKo = e.message; }
     let contacts = [], pieces = [], contactsKo = "", piecesKo = "";
-    this.hasFlag = !a.length || Object.prototype.hasOwnProperty.call(a[0], "flag");
+    this.ficheCols = a.length ? new Set(Object.keys(a[0])) : null; this.hasFlag = this.hasCol("flag");
     try { contacts = (await this.all("contacts")).map(r => this.fromDb(r, CCOLS)); } catch (e) { contactsKo = e.message; }
     try { pieces = (await this.all("pieces")).map(r => this.fromDb(r, PCOLS)); } catch (e) { piecesKo = e.message; }
     return { fiches: a.map(r => this.fromDb(r, COLS)), tournees: b.map(r => this.fromDb(r, TCOLS)), offres, offresKo, contacts, pieces, contactsKo, piecesKo, needsLogin: false, notMember: false,
@@ -545,6 +567,8 @@ const SupaStore = {
     const { error } = await this.client().auth.updateUser({ password });
     if (error) throw new Error(error.message);
   },
+  hasCol(c) { return !this.ficheCols || this.ficheCols.has(c); },
+  async setGeo(id, g) { const { error } = await this.client().from("fiches").update({ lat: g.lat ?? null, lng: g.lng ?? null, geo: g.geo || null }).eq("id", id); if (error) throw new Error(error.message); },
   isAdmin() { return (this.user || "").toLowerCase() === "damien@mgh.be"; },
   async deleteFiche(id, state) {
     const paths = state.pieces.filter(x => String(x.ficheId) === String(id)).map(x => x.path);
@@ -598,7 +622,7 @@ const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tour
   oflt: { q: "", statut: "", alerte: "", resp: "", open: "1" }, osort: ["relance", 1], view: "dash", role: "DM", sel: null, draft: null,
   flt: { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1", flag: "" }, sort: ["relance", 1] };
 try { const p = JSON.parse(localStorage.getItem("mgh-suivi-rdv-ui") || "{}"); if (p.role) S.role = p.role; if (p.flt) Object.assign(S.flt, p.flt); } catch (e) {}
-try { S.agMode = localStorage.getItem("mgh-ag-mode") || "mois"; } catch (e) {}
+try { S.agMode = localStorage.getItem("mgh-ag-mode") || "mois"; S.fmode = localStorage.getItem("mgh-fmode") || "liste"; } catch (e) {}
 const saveUi = () => { try { localStorage.setItem("mgh-suivi-rdv-ui", JSON.stringify({ role: S.role, flt: S.flt })); } catch (e) {} };
 const $app = document.getElementById("app");
 function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 2200); }
@@ -654,6 +678,7 @@ function viewDash() {
           <span>${prioHtml(f.prio)}</span>
         </button>`).join("") : `<p class="empty">Aucune relance dans les 7 jours.</p>`}</div>
     </section>
+    ${activityPanel()}
   </div>`;
 }
 function dashOffres() {
@@ -686,7 +711,7 @@ const rdvIn = x => S.fiches.filter(f => f.etape === ETAPES[3] && f.dateRDV && f.
 function filtered() {
   const q = S.flt.q.trim().toLowerCase();
   let L = S.fiches.filter(f =>
-    (!q || [f.soc, f.contact, f.objet, f.zone, f.hist, f.adr, f.id].join(" ").toLowerCase().includes(q)) &&
+    (!q || [f.soc, f.contact, f.objet, f.zone, f.hist, f.adr, f.id, intl(f).map(x => x.nom + " " + x.fonction).join(" ")].join(" ").toLowerCase().includes(q)) &&
     (!S.flt.etape || f.etape === S.flt.etape) && (!S.flt.pays || f.pays === S.flt.pays) &&
     (!S.flt.flag || !SupaStore.hasFlag || f.flag === true) && (!S.flt.prio || String(f.prio) === S.flt.prio) && (!S.flt.resp || f.resp === S.flt.resp) &&
     (!S.flt.alerte || (S.flt.alerte === "*" ? alerte(f) : alerte(f) === S.flt.alerte)) &&
@@ -717,9 +742,10 @@ function viewFiches() {
         <button class="btn small" id="f-reset">Effacer</button>
         <button class="btn primary small" id="new">+ Nouvelle fiche</button>
         <button class="btn small" id="print-list">Imprimer la liste</button>
+        <span class="seg"><button data-fmode="liste" aria-pressed="${S.fmode !== "carte"}">Liste</button><button data-fmode="carte" aria-pressed="${S.fmode === "carte"}">Carte</button></span>
         <span class="count num">${L.length} fiche(s)</span>
       </div>
-      <div class="tablewrap"><table>
+      ${S.fmode === "carte" ? mapBlock(L) : `<div class="tablewrap"><table>
         <thead><tr>${SupaStore.hasFlag ? th("flag","⚑") : ""}${th("alerte","Alerte")}${th("soc","Société")}${th("zone","Zone")}${th("prio","Prio")}${th("etape","Étape")}${th("relance","Relance")}${th("rdv","RDV")}${th("resp","Resp.")}</tr></thead>
         <tbody>${L.map(f => `<tr data-open="${esc(f.id)}" class="${String(S.sel) === String(f.id) ? "sel" : ""} ${closed(f) ? "closed" : ""} ${f.flag === true ? "flag" : ""}">
           ${SupaStore.hasFlag ? `<td style="width:40px">${flagBtn(f)}</td>` : ""}<td>${alHtml(alerte(f))}</td>
@@ -732,7 +758,7 @@ function viewFiches() {
           <span class="top-l"><span class="soc">${f.flag === true ? "⚑ " : ""}${esc(f.soc)}</span>${prioHtml(f.prio)}</span>
           <span>${pill(f.etape)} ${alHtml(alerte(f))}</span>
           <span class="meta"><span>${esc(zoneTxt(f))}</span>${f.relance ? `<span>Relance ${fr(f.relance)}</span>` : ""}${f.dateRDV ? `<span>RDV ${fr(f.dateRDV)} ${esc(f.heure)}</span>` : ""}</span>
-        </button>`).join("")}${L.length > 150 ? `<p class="empty">150 premières fiches affichées : affinez la recherche.</p>` : ""}</div>
+        </button>`).join("")}${L.length > 150 ? `<p class="empty">150 premières fiches affichées : affinez la recherche.</p>` : ""}</div>`}
     </div>
     ${S.sel ? sheet() : ""}
   </div>`;
@@ -757,6 +783,11 @@ function sheet() {
         <button class="btn small" data-q="fixed">RDV fixé</button>
         <button class="btn small" data-q="done">RDV réalisé</button>
       </div></div>
+      <div class="w"><div class="lbl" style="margin-bottom:6px">Mails préparés (Outlook)</div><div class="mails">
+        <button class="btn small" data-mail="contact" type="button">Mail : après appel sans réponse</button>
+        <button class="btn small" data-mail="demande" type="button">Mail : demande de rendez-vous</button>
+        <button class="btn small" data-mail="confirm" type="button">Mail : confirmation du RDV</button>
+      </div></div>
       <fieldset><legend class="lbl">Pilotage</legend>
         ${sel("etape","Étape",ETAPES)}${sel("resp","Responsable",RESP)}
         <div class="f"><label for="d-prio">Priorité</label><select id="d-prio" data-k="prio">${prioOpts(f.prio, "…")}</select></div>${inp("nb","Nb tentatives","number")}
@@ -769,13 +800,14 @@ function sheet() {
         <div class="f full" style="display:flex;gap:8px;flex-wrap:wrap;flex-direction:row"><button class="btn small primary" id="outlook-web" type="button">Créer le RDV dans Outlook</button><button class="btn small" id="ics" type="button">Fichier .ics (Outlook bureau)</button></div>
       </fieldset>
       <div><div class="lbl" style="margin-bottom:6px">Historique</div>
-        <div class="note-row"><input id="note" placeholder="Ajouter une note datée (ex. pas joignable, rappeler jeudi)" aria-label="Nouvelle note"><button class="btn small" id="addnote">Ajouter</button></div>
-        <div class="hist" style="margin-top:6px">${esc(f.hist) || "<span style='color:var(--muted)'>Aucun historique.</span>"}</div></div>
+        <div class="note-row"><select id="note-type" aria-label="Type de note" style="max-width:150px">${HTYPES.map(x => `<option ${x === (S.ntype || "Note") ? "selected" : ""}>${x}</option>`).join("")}</select><input id="note" placeholder="Ajouter une note datée (ex. joint, rappeler jeudi)" aria-label="Nouvelle note"><button class="btn small" id="addnote">Ajouter</button></div>
+        <div class="hist" style="margin-top:6px">${histHtml(f.hist)}</div></div>
       ${piecesBlock(f)}
       <fieldset><legend class="lbl">Société et contact</legend>
         ${inp("soc","Société","text","full")}
         <div class="adr-row">${inp("contact","Contact")}<button class="btn small w" id="pick-open" type="button" aria-expanded="${S.pick}">Choisir dans le carnet</button></div>
         ${S.pick ? pickerBlock(f) : ""}
+        ${intlBlock(f)}
         ${sel("statut","Statut compte",["Client","Prospect","Ancien client"])}
         ${inp("tel","Téléphone","tel")}${inp("mail","Mail","email")}
         <div class="adr-row">${inp("adr","Adresse")}<button class="btn small" id="maps" type="button" title="Ouvrir l'adresse dans Google Maps">Localiser (Google Maps)</button></div>
@@ -813,8 +845,124 @@ function pickerBlock(f) {
   if (S.contactsKo) return `<div class="picker"><p class="empty">Carnet d'adresses indisponible : ${esc(S.contactsKo)}</p></div>`;
   const q = S.pickQ, L = S.contacts.filter(c => contactMatch(c, q)).sort((a, b) => cname(a).localeCompare(cname(b))).slice(0, 30);
   return `<div class="picker"><input type="search" id="pick-q" placeholder="Rechercher un nom, une société, un mail…" value="${esc(q)}" aria-label="Rechercher dans le carnet">
-    <div class="rows">${L.map(c => `<button class="row ct-row" data-pick="${esc(c.id)}" type="button"><span style="min-width:0"><span class="r-soc">${esc(cname(c) || c.societe || c.email)}</span><span class="r-sub">${esc([c.fonction, c.societe, c.mobile || c.tel, c.email].filter(Boolean).join(" · "))}</span></span><span class="btn small">Choisir</span></button>`).join("")
+    <div class="rows">${L.map(c => `<button class="row ct-row" data-pick="${esc(c.id)}" type="button"><span style="min-width:0"><span class="r-soc">${esc(cname(c) || c.societe || c.email)}</span><span class="r-sub">${esc([c.fonction, c.societe, c.mobile || c.tel, c.email].filter(Boolean).join(" · "))}</span></span><span style="display:flex;gap:6px"><span class="btn small">Principal</span><span class="btn small" data-pick-add="${esc(c.id)}">+ Interlocuteur</span></span></button>`).join("")
       || `<p class="empty">${S.contacts.length ? "Aucun contact trouvé." : "Le carnet est vide : importez vos contacts Google dans l'onglet Carnet d'adresses."}</p>`}</div></div>`;
+}
+const HTYPES = ["Note", "Appel", "Sans réponse", "Mail", "RDV", "Visite", "Offre"];
+const HRX = /^(\d{2})\.(\d{2})\.(\d{2}) (\S+)(?: \[([^\]]+)\])? : (.*)$/;
+function htype(tag, txt) {
+  if (tag) return tag; const t = String(txt).toLowerCase();
+  if (/^appel (de suivi )?sans r[ée]ponse/.test(t)) return "Sans réponse";
+  if (/^(appel de suivi|cr[ée]neau propos)/.test(t)) return "Appel";
+  if (/^rdv fix/.test(t)) return "RDV"; if (/^rdv r[ée]alis/.test(t)) return "Visite";
+  if (/^mail/.test(t)) return "Mail"; return "Note";
+}
+function histEntries(h) { return String(h || "").split("\n").map(l => { const m = l.match(HRX); return m ? { iso: "20" + m[3] + "-" + m[2] + "-" + m[1], role: m[4], type: htype(m[5], m[6]), tagged: !!m[5], txt: m[6] } : null; }).filter(Boolean); }
+function histHtml(h) {
+  if (!String(h || "").trim()) return "<span style='color:var(--muted)'>Aucun historique.</span>";
+  return String(h).split("\n").map(l => { const m = l.match(HRX); if (!m || !m[5]) return `<span class="hist-l">${esc(l)}</span>`;
+    return `<span class="hist-l">${esc(m[1] + "." + m[2] + "." + m[3] + " " + m[4])} <span class="t ${esc(m[5].split(" ")[0])}">${esc(m[5])}</span>${esc(m[6])}</span>`; }).join("");
+}
+// ---- Modèles de mails
+const SIGN = { DM: "Damien Mestdagh\nSales Engineer · MGH Industrial Gears\n+32 (0)472 07 45 64 · damien@mgh.be\nwww.mgh.be",
+  VA: "Pour Damien Mestdagh, Sales Engineer\nMGH Industrial Gears\n+32 (0)472 07 45 64 · damien@mgh.be\nwww.mgh.be" };
+const salut = n => "Bonjour" + (n ? " " + n : "") + ",";
+const jourLong = iso => { const [y, m, d] = iso.split("-").map(Number); return JOURS_L[(new Date(y, m - 1, d).getDay() + 6) % 7] + " " + d + " " + MOIS[m - 1] + " " + y; };
+function mailTpl(kind, x) {
+  const sig = SIGN[S.role] || SIGN.DM;
+  if (kind === "contact") return { s: "MGH Industrial Gears · " + (x.soc || "votre parc d'entraînements"),
+    b: [salut(x.contact), "", "Nous avons essayé de vous joindre par téléphone, sans succès.", "", "MGH Industrial Gears accompagne les sites industriels pour la maintenance de leurs groupes d'entraînement : révision et réparation de réducteurs toutes marques, inspections et analyses d'huile, remplacement par des solutions neuves, stock important de pièces de rechange et intervention 24 h/24.", "", "Damien Mestdagh, Sales Engineer pour votre région, souhaiterait vous rencontrer" + (x.objet ? " au sujet de : " + x.objet : "") + ". Pourriez-vous nous indiquer un moment pour vous rappeler, ou vos disponibilités pour une visite ?", "", "Bien cordialement,", "", sig].join("\n") };
+  if (kind === "demande") return { s: "Demande de rendez-vous · MGH Industrial Gears",
+    b: [salut(x.contact), "", "Suite à notre échange, Damien Mestdagh, Sales Engineer MGH Industrial Gears, vous propose une rencontre sur votre site" + (x.objet ? " pour : " + x.objet : "") + ".", "", "Pourriez-vous nous indiquer le créneau qui vous convient le mieux ? Une visite dure en général 1 à 2 heures.", "", "Bien cordialement,", "", sig].join("\n") };
+  if (kind === "confirm") return { s: "Confirmation de rendez-vous · " + fr(x.dateRDV) + (x.heure ? " à " + x.heure : ""),
+    b: [salut(x.contact), "", "Nous vous confirmons votre rendez-vous avec Damien Mestdagh, Sales Engineer MGH Industrial Gears :", "", "· Date : " + jourLong(x.dateRDV) + (x.heure ? " à " + x.heure : ""), x.duree ? "· Durée prévue : " + String(x.duree).replace(".", ",") + " h" : "", "· Lieu : " + (x.lieu === "Sur site client" || !x.lieu ? (x.adr || "sur votre site") : x.lieu), x.objet ? "· Objet : " + x.objet : "", "", "En cas d'empêchement, merci de nous prévenir par retour de mail ou au +32 (0)472 07 45 64.", "", "Bien cordialement,", "", sig].filter((l, i, a) => l !== "" || a[i - 1] !== "").join("\n") };
+  if (kind === "relance") return { s: "Votre offre MGH n° " + (x.num || "") + (x.dateOffre ? " du " + fr(x.dateOffre) : ""),
+    b: [salut(x.contact), "", "Nous revenons vers vous concernant notre offre n° " + (x.num || "") + (x.dateOffre ? " du " + fr(x.dateOffre) : "") + (x.objet ? ", relative à : " + x.objet : "") + (eur(x.montantHT) ? ", pour un montant de " + eur(x.montantHT) + " HT" : "") + ".", "", (x.validite ? "Cette offre est valable jusqu'au " + fr(x.validite) + ". " : "") + "Avez-vous pu en prendre connaissance ? Nous restons à votre disposition pour toute question technique, une adaptation du périmètre ou du délai" + (x.delai ? " (délai actuel : " + x.delai + ")" : "") + ".", "", "Dans l'attente de votre retour, nous vous prions d'agréer nos salutations distinguées.", "", sig].join("\n") };
+}
+const MAILNOM = { contact: "après appel sans réponse", demande: "demande de rendez-vous", confirm: "confirmation du RDV", relance: "relance de l'offre" };
+function openMail(to, t) { const p = new URLSearchParams({ to: to || "", subject: t.s, body: t.b }); window.open("https://outlook.office.com/mail/deeplink/compose?" + p.toString(), "_blank", "noopener"); }
+// ---- Interlocuteurs
+const intl = f => (Array.isArray(f && f.interlocuteurs) ? f.interlocuteurs : []).map(x => ({ nom: "", fonction: "", tel: "", mail: "", ...x }));
+function intlBlock(f) {
+  if (!SupaStore.hasCol("interlocuteurs")) return "";
+  const L = intl(f), ii = (i, k, lab, type = "text") => `<div class="f"><label for="ik-${i}-${k}">${lab}</label><input id="ik-${i}-${k}" data-ik="${i}:${k}" type="${type}" value="${esc(L[i][k])}"></div>`;
+  return `<div class="intl"><div class="lbl" style="display:flex;justify-content:space-between;align-items:center;gap:8px">Autres interlocuteurs (${L.length})<button class="btn small w" id="i-add" type="button">+ Interlocuteur</button></div>
+    ${L.map((x, i) => `<div class="intl-row">${ii(i, "nom", "Nom")}${ii(i, "fonction", "Fonction")}${ii(i, "tel", "Téléphone", "tel")}${ii(i, "mail", "Mail", "email")}
+      <span style="display:flex;gap:4px"><button class="btn small w" data-iprinc="${i}" type="button" title="Devient le contact principal, utilisé pour le RDV et les mails">Principal</button><button class="btn small ghost w" data-idel="${i}" type="button" style="color:var(--crit)" aria-label="Retirer">✕</button></span></div>`).join("")
+      || `<p class="empty" style="margin:0">Le contact ci-dessus est l'interlocuteur principal (RDV, mails). Ajoutez ici les autres personnes de la société.</p>`}</div>`;
+}
+// ---- Activité de prospection
+function activityPanel() {
+  const who = S.actRole || "", today = isoToday(), mon = mondayOf(today), weeks = Array.from({ length: 8 }, (_, i) => addDays(mon, -7 * i));
+  const E = S.fiches.flatMap(f => histEntries(f.hist)).concat(S.offres.flatMap(o => histEntries(o.hist))).filter(e => !who || e.role === who);
+  const row = d0 => { const d1 = addDays(d0, 6), X = E.filter(e => e.iso >= d0 && e.iso <= d1), n = t => X.filter(e => e.type === t).length;
+    const ap = n("Appel"), nr = n("Sans réponse"); return { d0, ap, nr, j: ap + nr ? Math.round(ap / (ap + nr) * 100) + " %" : "", ma: n("Mail"), rdv: n("RDV"), vi: n("Visite"), of: n("Offre") }; };
+  const R = weeks.map(row), T = R.reduce((a, r) => { ["ap","nr","ma","rdv","vi","of"].forEach(k => a[k] += r[k]); return a; }, { ap: 0, nr: 0, ma: 0, rdv: 0, vi: 0, of: 0 });
+  T.j = T.ap + T.nr ? Math.round(T.ap / (T.ap + T.nr) * 100) + " %" : "";
+  const seg = [["", "Tous"], ["DM", "Damien"], ["VA", "Assistante"]].map(([k, l]) => `<button data-act-role="${k}" aria-pressed="${who === k}">${l}</button>`).join("");
+  const tr = (lab, r, b) => `<tr${b ? ' style="font-weight:700"' : ""}><td>${lab}</td><td class="num">${r.ap}</td><td class="num">${r.nr}</td><td class="num">${r.j}</td><td class="num">${r.ma}</td><td class="num">${r.rdv}</td><td class="num">${r.vi}</td><td class="num">${r.of}</td></tr>`;
+  return `<section class="panel span-12" aria-labelledby="h-act"><h2><span class="lbl" id="h-act">Activité de prospection · 8 dernières semaines</span><span class="seg">${seg}</span></h2>
+    <div class="tablewrap" style="border:0"><table class="act"><thead><tr><th>Semaine</th><th>Appels joints</th><th>Sans réponse</th><th>Joignabilité</th><th>Mails</th><th>RDV fixés</th><th>Visites</th><th>Actions offres</th></tr></thead>
+    <tbody>${R.map(r => tr("S" + isoWeek(r.d0) + " · " + fr(r.d0).slice(0, 5), r)).join("")}${tr("Total 8 semaines", T, true)}</tbody></table></div>
+    <p class="demo-note" style="margin:8px 0 0">Calculé à partir des notes de l'historique : actions rapides, mails préparés et notes typées (Appel, Sans réponse, Mail, RDV, Visite, Offre).</p></section>`;
+}
+// ---- Carte
+const LEAFLET = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/";
+function loadLeaflet() { if (window.L && window.L.map) return Promise.resolve(); return loadLeaflet.p || (loadLeaflet.p = new Promise((ok, ko) => {
+  const c = document.createElement("link"); c.rel = "stylesheet"; c.href = LEAFLET + "leaflet.css"; document.head.appendChild(c);
+  const s = document.createElement("script"); s.src = LEAFLET + "leaflet.js"; s.onload = ok; s.onerror = () => { loadLeaflet.p = null; ko(new Error("carte indisponible")); }; document.head.appendChild(s); })); }
+const DEPTS = {"01":"Ain","02":"Aisne","03":"Allier","04":"Alpes-de-Haute-Provence","05":"Hautes-Alpes","06":"Alpes-Maritimes","07":"Ardèche","08":"Ardennes","09":"Ariège","10":"Aube","11":"Aude","12":"Aveyron","13":"Bouches-du-Rhône","14":"Calvados","15":"Cantal","16":"Charente","17":"Charente-Maritime","18":"Cher","19":"Corrèze","21":"Côte-d'Or","22":"Côtes-d'Armor","23":"Creuse","24":"Dordogne","25":"Doubs","26":"Drôme","27":"Eure","28":"Eure-et-Loir","29":"Finistère","30":"Gard","31":"Haute-Garonne","32":"Gers","33":"Gironde","34":"Hérault","35":"Ille-et-Vilaine","36":"Indre","37":"Indre-et-Loire","38":"Isère","39":"Jura","40":"Landes","41":"Loir-et-Cher","42":"Loire","43":"Haute-Loire","44":"Loire-Atlantique","45":"Loiret","46":"Lot","47":"Lot-et-Garonne","48":"Lozère","49":"Maine-et-Loire","50":"Manche","51":"Marne","52":"Haute-Marne","53":"Mayenne","54":"Meurthe-et-Moselle","55":"Meuse","56":"Morbihan","57":"Moselle","58":"Nièvre","59":"Nord","60":"Oise","61":"Orne","62":"Pas-de-Calais","63":"Puy-de-Dôme","64":"Pyrénées-Atlantiques","65":"Hautes-Pyrénées","66":"Pyrénées-Orientales","67":"Bas-Rhin","68":"Haut-Rhin","69":"Rhône","70":"Haute-Saône","71":"Saône-et-Loire","72":"Sarthe","73":"Savoie","74":"Haute-Savoie","75":"Paris","76":"Seine-Maritime","77":"Seine-et-Marne","78":"Yvelines","79":"Deux-Sèvres","80":"Somme","81":"Tarn","82":"Tarn-et-Garonne","83":"Var","84":"Vaucluse","85":"Vendée","86":"Vienne","87":"Haute-Vienne","88":"Vosges","89":"Yonne","90":"Territoire de Belfort","91":"Essonne","92":"Hauts-de-Seine","93":"Seine-Saint-Denis","94":"Val-de-Marne","95":"Val-d'Oise"};
+const CC = { BE: "be", FR: "fr", LU: "lu", NL: "nl", DE: "de" };
+const pause = ms => new Promise(r => setTimeout(r, ms));
+async function nomi(q, cc) {
+  const u = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=fr&countrycodes=" + (cc || "be,fr,lu,nl,de") + "&q=" + encodeURIComponent(q);
+  const r = await fetch(u, { headers: { Accept: "application/json" } }); if (!r.ok) throw new Error("service de géolocalisation : HTTP " + r.status);
+  const d = await r.json(); await pause(1100); return d[0] ? { lat: +d[0].lat, lng: +d[0].lon } : null;
+}
+async function geocodeFiche(f) {
+  const cc = CC[f.pays], pn = PAYS_NOM[f.pays] || "", adr = String(f.adr || "").replace(/attention[^:]*:/i, "").replace(/\s+/g, " ").trim();
+  const tries = [];
+  if (adr) tries.push([adr + (pn ? ", " + pn : ""), "adresse"]);
+  const cp = adr.match(/\b(\d{4,5})\s+([A-Za-zÀ-ÿ'][A-Za-zÀ-ÿ' -]{2,})/); if (cp) tries.push([cp[1] + " " + cp[2].trim() + (pn ? ", " + pn : ""), "ville"]);
+  const z = String(f.zone || "").trim();
+  if (z) tries.push([f.pays === "FR" && /^\d{1,2}$/.test(z) ? (DEPTS[z.padStart(2, "0")] || z) + ", France" : z + (pn ? ", " + pn : ""), "zone"]);
+  for (const [q, geo] of tries) { const r = await nomi(q, cc); if (r) return { ...r, geo }; }
+  return { lat: "", lng: "", geo: "introuvable" };
+}
+async function placeOne(f) { if (!SupaStore.hasCol("lat") || S.access === "lecture") return; try { const g = await geocodeFiche(f); await SupaStore.setGeo(f.id, g); const x = S.fiches.find(y => y.id === f.id); if (x) Object.assign(x, g); if (S.view === "fiches" && S.fmode === "carte" && !S.sel) render(); } catch (e) {} }
+async function geoRun() {
+  if (S.geoRun) { S.geoRun.stop = true; return; }
+  const todo = S.fiches.filter(f => (f.lat === "" || f.lat === null) && f.geo !== "introuvable"); if (!todo.length) { toast("Toutes les fiches sont déjà placées"); return; }
+  const run = S.geoRun = { done: 0, total: todo.length, ok: 0, stop: false }; render();
+  for (const f of todo) { if (run.stop) break;
+    try { const g = await geocodeFiche(f); await SupaStore.setGeo(f.id, g); Object.assign(f, g); if (g.lat !== "") run.ok++; }
+    catch (e) { toast("Placement interrompu : " + e.message); break; }
+    run.done++; const el = document.getElementById("geo-prog"); if (el) el.textContent = "Placement en cours : " + run.done + " / " + run.total + " (cliquez pour arrêter)"; }
+  S.geoRun = null; toast(run.ok + " fiche(s) placée(s) sur " + run.done + " traitée(s)"); render();
+}
+function mapBlock(L) {
+  const placed = L.filter(f => f.lat !== "" && f.lat !== null), todo = S.fiches.filter(f => (f.lat === "" || f.lat === null) && f.geo !== "introuvable").length, nf = S.fiches.filter(f => f.geo === "introuvable").length;
+  return `<div id="fmap" role="region" aria-label="Carte des fiches"></div>
+    <div class="map-legend">${ETAPES.map((e, i) => `<span><span class="sw" style="background:${ET_COLORS[i]}"></span>${esc(e)}</span>`).join("")}
+      <span><span class="sw" style="background:#fff;border:3px solid #C77700"></span>flag</span><span>grand point = P MAX ou P1 · point pâle = position approximative (ville ou zone)</span></div>
+    <div class="map-legend" style="justify-content:space-between"><span class="num">${placed.length} / ${L.length} fiche(s) affichée(s) sur la carte${nf ? " · " + nf + " adresse(s) introuvable(s) : à corriger dans la fiche" : ""}</span>
+      ${SupaStore.hasCol("lat") ? (S.geoRun ? `<button class="btn small w" id="geo-run"><span id="geo-prog">Placement en cours : ${S.geoRun.done} / ${S.geoRun.total} (cliquez pour arrêter)</span></button>` : todo ? `<button class="btn small primary w" id="geo-run">Placer ${todo} fiche(s) sur la carte</button>` : "") : `<span>Carte en cours d'activation dans la base.</span>`}</div>`;
+}
+function drawMap(L) {
+  loadLeaflet().then(() => {
+    const el = document.getElementById("fmap"); if (!el || el._done) return; el._done = true;
+    if (S.map) { try { S.map.remove(); } catch (e) {} }
+    const m = S.map = window.L.map(el, { preferCanvas: true });
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" }).addTo(m);
+    const pts = [];
+    L.filter(f => f.lat !== "" && f.lat !== null).sort((a, b) => prioRank(b.prio) - prioRank(a.prio)).forEach(f => {
+      const r = +f.prio === 0 && hasPrio(f.prio) ? 11 : +f.prio === 1 ? 9 : 7, approx = f.geo && f.geo !== "adresse";
+      window.L.circleMarker([+f.lat, +f.lng], { radius: r, color: f.flag === true ? "#C77700" : "#ffffff", weight: f.flag === true ? 3 : 1.5, fillColor: ET_COLORS[etIdx(f.etape)], fillOpacity: approx ? 0.45 : 0.9 })
+        .bindPopup(`<b>${esc(f.soc)}</b><br>${esc(f.etape || "")}${hasPrio(f.prio) ? " · " + esc(prioLbl(f.prio)) : ""}${f.contact ? "<br>" + esc(f.contact) : ""}${f.dateRDV ? "<br>RDV " + fr(f.dateRDV) + " " + esc(f.heure || "") : ""}${f.relance ? "<br>Relance " + fr(f.relance) : ""}<br><span style="color:#6B6E74">${esc(f.adr || zoneTxt(f))}${approx ? " (position approximative)" : ""}</span><br><button class="btn small" data-open="${esc(f.id)}" style="margin-top:6px">Ouvrir la fiche</button>`)
+        .addTo(m); pts.push([+f.lat, +f.lng]); });
+    if (S.mapView) m.setView(S.mapView.c, S.mapView.z); else if (pts.length) m.fitBounds(pts, { padding: [30, 30], maxZoom: 11 }); else m.setView([50.4, 3.8], 7);
+    m.on("moveend", () => { S.mapView = { c: m.getCenter(), z: m.getZoom() }; });
+  }).catch(e => { const el = document.getElementById("fmap"); if (el) el.innerHTML = `<p class="empty" style="padding:16px">Carte indisponible : ${esc(e.message)}</p>`; });
 }
 const rdvsIn = x => S.fiches.filter(f => f.etape === ETAPES[3] && f.dateRDV && f.dateRDV >= x.du && f.dateRDV <= (x.au || x.du))
   .sort((a, b) => (a.dateRDV + a.heure).localeCompare(b.dateRDV + b.heure));
@@ -948,6 +1096,7 @@ function oSheet() {
         <button class="btn small" data-oq="nego">Négociation</button>
         <button class="btn small" data-oq="won">Commande reçue</button>
         <button class="btn small" data-oq="lost">Perdue</button>
+        <button class="btn small" data-omail="relance" type="button">Mail : relance de l'offre</button>
       </div></div>
       <fieldset><legend class="lbl">Suivi</legend>
         ${sel("statut","Statut",OSTATUTS)}${sel("resp","Responsable",RESP)}
@@ -962,8 +1111,8 @@ function oSheet() {
         <label class="btn small filebtn w">${o.pdfPath || S.opendingFile ? "Remplacer le PDF" : "Joindre l'offre (PDF)"}<input type="file" id="o-file" accept="application/pdf,.pdf"></label>
       </div></div>
       <div><div class="lbl" style="margin-bottom:6px">Historique</div>
-        <div class="note-row onote-row"><input id="onote" placeholder="Ajouter une note datée (ex. client attend accord budget)" aria-label="Nouvelle note"><button class="btn small" id="oaddnote">Ajouter</button></div>
-        <div class="hist" style="margin-top:6px">${esc(o.hist) || "<span style='color:var(--muted)'>Aucun historique.</span>"}</div></div>
+        <div class="note-row onote-row"><select id="onote-type" aria-label="Type de note" style="max-width:150px">${HTYPES.map(x => `<option ${x === (S.ontype || "Note") ? "selected" : ""}>${x}</option>`).join("")}</select><input id="onote" placeholder="Ajouter une note datée (ex. client attend accord budget)" aria-label="Nouvelle note"><button class="btn small" id="oaddnote">Ajouter</button></div>
+        <div class="hist" style="margin-top:6px">${histHtml(o.hist)}</div></div>
       <fieldset><legend class="lbl">Offre</legend>
         ${inp("num","N° d'offre")}${inp("dateOffre","Date de l'offre","date")}
         ${sel("nature","Nature",NATURES)}${inp("validite","Validité","date")}
@@ -975,7 +1124,10 @@ function oSheet() {
         ${inp("projet","N° projet")}${inp("clientNum","N° client")}
       </fieldset>
       <fieldset><legend class="lbl">Client</legend>
-        ${inp("soc","Société","text","full")}${inp("contact","Contact")}${inp("tel","Téléphone","tel")}
+        ${inp("soc","Société","text","full")}${(() => { const fx = S.fiches.find(f => String(f.id) === String(o.ficheId)); if (!fx) return "";
+          const P = [{ nom: fx.contact, tel: fx.tel, mail: fx.mail, fonction: "principal" }].concat(intl(fx)).filter(x => x.nom || x.mail);
+          return P.length ? `<div class="f full"><span class="lbl">Interlocuteurs de la fiche liée</span><div class="chips">${P.map((x, i) => `<button class="btn small w" data-oint="${i}" type="button">${esc(x.nom || x.mail)}${x.fonction ? " · " + esc(x.fonction) : ""}</button>`).join("")}</div></div>` : ""; })()}
+        ${inp("contact","Contact")}${inp("tel","Téléphone","tel")}
         ${inp("mail","Mail","email")}${inp("tva","N° TVA")}
         <div class="adr-row">${inp("adr","Adresse")}<button class="btn small" id="omaps" type="button">Localiser (Google Maps)</button></div>
         ${sel("pays","Pays",PAYS)}${inp("zone","Dpt / zone")}
@@ -989,7 +1141,7 @@ function oSheet() {
   </aside>`;
 }
 function readODraft() { document.querySelectorAll("[data-ok]").forEach(el => { S.odraft[el.dataset.ok] = el.type === "number" ? (el.value === "" ? "" : +el.value) : el.value; }); }
-function onote(txt) { const d = S.odraft; d.hist = frShort(isoToday()) + " " + S.role + " : " + txt + (d.hist ? "\n" + d.hist : ""); }
+function onote(txt, type) { const d = S.odraft; d.hist = noteLine(txt, type) + (d.hist ? "\n" + d.hist : ""); }
 function openOffre(id) { const o = S.offres.find(x => String(x.id) === String(id)); if (!o) return; S.confirmODel = null; S.opendingFile = null; S.sel = null; S.draft = null;
   S.osel = o.id; S.odraft = { ...o }; S.view = "offres"; render(); }
 function newOffre(pre) { const t = isoToday();
@@ -1286,7 +1438,9 @@ function viewSetup() {
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <button class="btn" id="export">Exporter vers Excel (CSV)</button>
         <button class="btn" id="logout">Se déconnecter</button>
+        ${S.installEvt ? `<button class="btn primary" id="install">Installer l'application</button>` : ""}
       </div>
+      <p class="demo-note" style="margin:12px 0 0">${window.matchMedia("(display-mode: standalone)").matches ? "Application installée sur cet appareil." : "Installer sur téléphone : Android (Chrome) menu ⋮ › Ajouter à l'écran d'accueil ; iPhone (Safari) bouton Partager › Sur l'écran d'accueil. Sur ordinateur : icône d'installation dans la barre d'adresse de Chrome ou Edge."}</p>
       <form id="pwform" style="display:grid;gap:8px;margin-top:16px;max-width:360px">
         <span class="lbl">Changer mon mot de passe</span>
         <input type="text" autocomplete="username" value="${esc(SupaStore.user)}" hidden>
@@ -1323,7 +1477,7 @@ function usersPanel() {
 const JLABEL = { soc:"Société", ref:"Réf.", contact:"Contact", tel:"Téléphone", mail:"Mail", adr:"Adresse", pays:"Pays", zone:"Zone", statut:"Statut",
   prio:"Priorité", objet:"Objet", consigne:"Consigne", resp:"Responsable", etape:"Étape", nb:"Tentatives", last:"Dernier contact", relance:"Relance",
   date_rdv:"Date RDV", heure:"Heure", duree:"Durée", lieu:"Lieu", agenda:"Agenda Outlook", hist:"Historique", entree:"Date d'entrée",
-  flag:"Flag", du:"Du", au:"Au", dispo:"Disponibilité", event_id:"ID événement", synchro:"Synchro",
+  flag:"Flag", interlocuteurs:"Interlocuteurs", du:"Du", au:"Au", dispo:"Disponibilité", event_id:"ID événement", synchro:"Synchro",
   num:"N° offre", date_offre:"Date offre", client_num:"N° client", projet:"Projet", tva:"TVA", nature:"Nature", lignes:"Lignes", montant_ht:"Montant HT",
   montant_ttc:"Montant TTC", validite:"Validité", paiement:"Paiement", livraison:"Livraison", delai:"Délai", contact_mgh:"Contact MGH",
   date_target:"Date target", dernier_appel:"Dernier appel", proba:"Probabilité", motif:"Commentaire", fiche_id:"Fiche liée", pdf_path:"PDF", pdf_nom:"Nom du PDF" };
@@ -1334,7 +1488,7 @@ function jdetail(r) {
   if (r.action === "connexion") return "Ouverture de l'application";
   if (r.action === "creation") return (JOBJ[r.objet] || JOBJ.fiche)[0];
   if (r.action === "suppression") return (JOBJ[r.objet] || JOBJ.fiche)[1] + (r.details && (r.details.ref || r.details.num) ? " (" + (r.details.ref || r.details.num) + ")" : "");
-  return Object.entries(r.details || {}).map(([k, v]) => k === "hist"
+  return Object.entries(r.details || {}).filter(([k]) => !["lat","lng","geo"].includes(k)).map(([k, v]) => k === "interlocuteurs" ? "Interlocuteurs modifiés" : k === "hist"
       ? "Historique : " + (String(v.apres || "").split("\n")[0].slice(0, 90) || "modifié")
       : (JLABEL[k] || k) + " : " + jval(v.avant) + " → " + jval(v.apres)).join(" · ");
 }
@@ -1433,7 +1587,7 @@ function printList() {
 function printFiche(f) {
   const kv = (k, v, full) => v === "" || v === null || v === undefined ? "" : `<div class="${full ? "p-full" : ""}"><b>${k}</b><span>${esc(v)}</span></div>`;
   doPrint(printHead(f.soc || "Fiche", [f.ref, "Imprimée le " + fr(isoToday()), f.modif && "modifiée le " + f.modif].filter(Boolean).join(" · ")) +
-    `<div class="p-sec">Société et contact</div><div class="p-grid">${kv("Contact", f.contact)}${kv("Statut", f.statut)}${kv("Téléphone", f.tel)}${kv("Mail", f.mail)}${kv("Adresse", f.adr, true)}${kv("Pays / zone", [f.pays, f.zone].filter(Boolean).join(" · "))}</div>
+    `<div class="p-sec">Société et contact</div><div class="p-grid">${kv("Contact principal", f.contact)}${intl(f).map((x, i) => kv("Interlocuteur " + (i + 1), [x.nom, x.fonction, x.tel, x.mail].filter(Boolean).join(" · "), true)).join("")}${kv("Statut", f.statut)}${kv("Téléphone", f.tel)}${kv("Mail", f.mail)}${kv("Adresse", f.adr, true)}${kv("Pays / zone", [f.pays, f.zone].filter(Boolean).join(" · "))}</div>
     <div class="p-sec">Pilotage</div><div class="p-grid">${kv("Étape", f.etape)}${kv("Alerte", alerte(f))}${kv("Priorité", prioLbl(f.prio))}${kv("Responsable", f.resp)}${kv("Nb tentatives", f.nb)}${kv("Dernier contact", fr(f.last))}${kv("Prochaine relance", fr(f.relance))}${kv("Date d'entrée", fr(f.entree))}${kv("Objet du RDV", f.objet, true)}${kv("Consigne Damien", f.consigne, true)}</div>
     ${f.dateRDV ? `<div class="p-sec">Rendez-vous</div><div class="p-grid">${kv("Date", fr(f.dateRDV) + " (" + dow(f.dateRDV) + ")")}${kv("Heure", f.heure)}${kv("Durée", f.duree ? f.duree + " h" : "")}${kv("Lieu / format", f.lieu)}</div>` : ""}
     <div class="p-sec">Historique</div><div class="p-hist">${esc(f.hist) || "Aucun historique."}</div>
@@ -1479,10 +1633,10 @@ function printOffre(o) {
     <p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "portrait");
 }
 function csvExport() {
-  const keys = ["ref","flag","soc","contact","tel","mail","adr","pays","zone","statut","prio","objet","consigne","resp","etape","nb","last","relance","dateRDV","heure","duree","lieu","hist","entree"];
-  const head = ["Réf.","Flag","Société","Contact","Téléphone","Mail","Adresse","Pays","Dpt / zone","Statut compte","Priorité","Objet du RDV","Consigne Damien","Responsable","Étape","Nb tentatives","Dernier contact","Prochaine relance","Date RDV","Heure","Durée (h)","Lieu / format","Historique","Date d'entrée"];
+  const keys = ["ref","flag","soc","contact","interlocuteurs","tel","mail","adr","pays","zone","statut","prio","objet","consigne","resp","etape","nb","last","relance","dateRDV","heure","duree","lieu","hist","entree"];
+  const head = ["Réf.","Flag","Société","Contact","Autres interlocuteurs","Téléphone","Mail","Adresse","Pays","Dpt / zone","Statut compte","Priorité","Objet du RDV","Consigne Damien","Responsable","Étape","Nb tentatives","Dernier contact","Prochaine relance","Date RDV","Heure","Durée (h)","Lieu / format","Historique","Date d'entrée"];
   const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
-  const lines = [head.map(q).join(";")].concat(S.fiches.map(f => keys.map(k => q(k === "prio" ? prioLbl(f[k]) : k === "flag" ? (f.flag === true ? "oui" : "") : f[k])).join(";")));
+  const lines = [head.map(q).join(";")].concat(S.fiches.map(f => keys.map(k => q(k === "prio" ? prioLbl(f[k]) : k === "flag" ? (f.flag === true ? "oui" : "") : k === "interlocuteurs" ? intl(f).map(x => [x.nom, x.fonction, x.tel, x.mail].filter(Boolean).join(" / ")).join(" | ") : f[k])).join(";")));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
   a.download = "Suivi_RDV_" + isoToday() + ".csv"; document.body.appendChild(a); a.click(); a.remove();
@@ -1523,8 +1677,10 @@ function render() {
 
   const sc = window.scrollY;
   if (S.needsLogin || S.notMember) { $app.innerHTML = viewLogin(S.notMember ? "L'adresse " + SupaStore.user + " n'est pas autorisée. Demandez à Damien de l'ajouter." : S.loginMsg); return; }
+  if (S.map) { try { S.map.remove(); } catch (e) {} S.map = null; }
   $app.innerHTML = S.view === "dash" ? viewDash() : S.view === "fiches" ? viewFiches() : S.view === "offres" ? viewOffres() : S.view === "agenda" ? viewAgenda() : S.view === "carnet" ? viewCarnet() : S.view === "tournees" ? viewTournees() : viewSetup();
   applyReadOnly(); setHdr();
+  if (S.view === "fiches" && S.fmode === "carte") drawMap(filtered());
   const m = document.getElementById("mode"); if (m) { m.textContent = S.access === "lecture" ? "LECTURE SEULE" : "EN LIGNE"; m.classList.toggle("live", S.access !== "lecture"); }
   window.scrollTo(0, sc);
 }
@@ -1534,8 +1690,10 @@ function go(view) { if (view === "setup" && SupaStore.isAdmin()) Promise.all([lo
 function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.back = S.view === "agenda" ? "agenda" : S.view === "offres" && S.osel ? "offres" : null; S.sel = id; S.draft = {...f}; S.pick = false; S.confirmPDel = null; S.view = "fiches"; render(); }
 function newFiche() { S.sel = "__new"; S.draft = { id:"", soc:"", contact:"", tel:"", mail:"", adr:"", pays:"", zone:"", statut:"Prospect", prio:2, objet:"", consigne:"",
   resp:"Vit'Admin", etape:ETAPES[0], nb:0, last:"", relance:"", dateRDV:"", heure:"", duree:"", lieu:"", agenda:"", hist:"", entree:"", modif:"" }; render(); setTimeout(() => document.getElementById("d-soc")?.focus(), 0); }
-function note(txt) { const d = S.draft; d.hist = frShort(isoToday()) + " " + S.role + " : " + txt + (d.hist ? "\n" + d.hist : ""); }
-function readDraft() { document.querySelectorAll("[data-k]").forEach(el => { S.draft[el.dataset.k] = el.type === "number" ? (el.value === "" ? "" : +el.value) : el.value; }); }
+function noteLine(txt, type) { return frShort(isoToday()) + " " + S.role + (type ? " [" + type + "]" : "") + " : " + txt; }
+function note(txt, type) { const d = S.draft; d.hist = noteLine(txt, type) + (d.hist ? "\n" + d.hist : ""); }
+function readDraft() { document.querySelectorAll("[data-k]").forEach(el => { S.draft[el.dataset.k] = el.type === "number" ? (el.value === "" ? "" : +el.value) : el.value; });
+  const L = intl(S.draft); document.querySelectorAll("[data-ik]").forEach(el => { const [i, k] = el.dataset.ik.split(":"); if (L[+i]) L[+i][k] = el.value; }); if (S.draft) S.draft.interlocuteurs = L; }
 
 document.querySelector("nav.tabs").addEventListener("click", e => { const b = e.target.closest("[data-view]"); if (b) go(b.dataset.view); });
 document.getElementById("role").addEventListener("click", e => { const b = e.target.closest("[data-role]"); if (!b) return; S.role = b.dataset.role;
@@ -1543,6 +1701,24 @@ document.getElementById("role").addEventListener("click", e => { const b = e.tar
 
 $app.addEventListener("click", async e => {
   const t = e.target;
+  const fm = t.closest("[data-fmode]"); if (fm) { S.fmode = fm.dataset.fmode; try { localStorage.setItem("mgh-fmode", S.fmode); } catch (e) {} render(); return; }
+  if (t.closest("#geo-run")) { if (S.access === "lecture") return; geoRun(); return; }
+  const ar = t.closest("[data-act-role]"); if (ar) { S.actRole = ar.dataset.actRole; render(); return; }
+  const ml = t.closest("[data-mail]"); if (ml) { readDraft(); const d = S.draft, k = ml.dataset.mail;
+    if (k === "confirm" && !d.dateRDV) { toast("Indiquez d'abord la date du RDV"); document.getElementById("d-dateRDV")?.focus(); return; }
+    openMail(d.mail, mailTpl(k, d)); note("mail « " + MAILNOM[k] + " » préparé" + (d.mail ? " pour " + d.mail : ""), "Mail"); render();
+    toast((d.mail ? "" : "Pas d'adresse mail dans la fiche. ") + "Outlook ouvert : vérifiez, envoyez, puis enregistrez la fiche"); return; }
+  const om = t.closest("[data-omail]"); if (om) { readODraft(); const d = S.odraft;
+    openMail(d.mail, mailTpl("relance", d)); onote("mail « relance de l'offre » préparé" + (d.mail ? " pour " + d.mail : ""), "Mail"); if (!d.appel) d.appel = isoToday(); render();
+    toast((d.mail ? "" : "Pas d'adresse mail dans l'offre. ") + "Outlook ouvert : vérifiez, envoyez, puis enregistrez l'offre"); return; }
+  if (t.id === "i-add") { readDraft(); const L = intl(S.draft); L.push({ nom: "", fonction: "", tel: "", mail: "" }); S.draft.interlocuteurs = L; render(); setTimeout(() => document.getElementById("ik-" + (L.length - 1) + "-nom")?.focus(), 0); return; }
+  const idl = t.closest("[data-idel]"); if (idl) { readDraft(); const L = intl(S.draft); L.splice(+idl.dataset.idel, 1); S.draft.interlocuteurs = L; render(); return; }
+  const ipr = t.closest("[data-iprinc]"); if (ipr) { readDraft(); const d = S.draft, L = intl(d), i = +ipr.dataset.iprinc, x = L[i];
+    L[i] = { nom: d.contact || "", fonction: "", tel: d.tel || "", mail: d.mail || "" }; d.contact = x.nom; d.tel = x.tel; d.mail = x.mail;
+    d.interlocuteurs = L.filter(y => y.nom || y.tel || y.mail); render(); toast(x.nom + " devient le contact principal : enregistrez la fiche"); return; }
+  const oi = t.closest("[data-oint]"); if (oi) { readODraft(); const d = S.odraft, fx = S.fiches.find(f => String(f.id) === String(d.ficheId)); if (!fx) return;
+    const P = [{ nom: fx.contact, tel: fx.tel, mail: fx.mail }].concat(intl(fx)).filter(x => x.nom || x.mail), x = P[+oi.dataset.oint]; if (!x) return;
+    d.contact = x.nom || d.contact; if (x.tel) d.tel = x.tel; if (x.mail) d.mail = x.mail; render(); toast("Interlocuteur repris : enregistrez l'offre"); return; }
   const fl = t.closest("[data-flag]"); if (fl) { e.stopPropagation(); if (S.access === "lecture") return;
     const f = S.fiches.find(x => String(x.id) === String(fl.dataset.flag)); if (!f) return;
     try { const saved = await Store.saveFiche({ ...f, flag: f.flag !== true }, S); if (S.draft && String(S.draft.id) === String(saved.id)) S.draft.flag = saved.flag; render(); toast(saved.flag === true ? "Flag activé : " + saved.soc : "Flag retiré : " + saved.soc); }
@@ -1550,6 +1726,9 @@ $app.addEventListener("click", async e => {
   const o = t.closest("[data-open]"); if (o && !t.closest(".sheet")) { openFiche(o.dataset.open); return; }
   if (t.closest("#d-flag")) { readDraft(); S.draft.flag = S.draft.flag !== true; render(); toast(S.draft.flag ? "Flag activé : enregistrez la fiche" : "Flag retiré : enregistrez la fiche"); return; }
   if (t.id === "pick-open") { readDraft(); S.pick = !S.pick; if (S.pick && !S.pickQ) S.pickQ = S.draft.soc || ""; render(); if (S.pick) setTimeout(() => { const q = document.getElementById("pick-q"); if (q) { q.focus(); q.select(); } }, 0); return; }
+  const pka = t.closest("[data-pick-add]"); if (pka) { readDraft(); const c = S.contacts.find(x => String(x.id) === String(pka.dataset.pickAdd)); if (!c) return;
+    const L = intl(S.draft); L.push({ nom: cname(c) || c.societe || "", fonction: c.fonction || "", tel: c.mobile || c.tel || "", mail: c.email || "" }); S.draft.interlocuteurs = L;
+    S.pick = false; S.pickQ = ""; render(); toast("Interlocuteur ajouté : enregistrez la fiche"); return; }
   const pk = t.closest("[data-pick]"); if (pk) { readDraft(); const c = S.contacts.find(x => String(x.id) === String(pk.dataset.pick)); if (!c) return; const d = S.draft;
     d.contact = cname(c) || d.contact; if (c.mobile || c.tel) d.tel = c.mobile || c.tel; if (c.email) d.mail = c.email;
     if (!d.soc && c.societe) d.soc = c.societe;
@@ -1601,21 +1780,21 @@ $app.addEventListener("click", async e => {
     try { await SupaStore.deleteOffre(d, S); S.osel = null; S.odraft = null; S.confirmODel = null; toast("Offre supprimée : " + d.soc); render(); }
     catch (err) { toast("Suppression impossible : " + err.message); } return; }
   if (t.id === "ojournal") { S.jf = { type: "", email: "", days: "", rec: S.odraft.id, recObj: "offre", recLabel: S.odraft.soc + (S.odraft.num ? " · " + S.odraft.num : "") }; S.osel = null; S.odraft = null; go("setup"); return; }
-  if (t.id === "oaddnote") { readODraft(); const v = document.getElementById("onote").value.trim(); if (v) { onote(v); render(); } return; }
+  if (t.id === "oaddnote") { readODraft(); const v = document.getElementById("onote").value.trim(); S.ontype = document.getElementById("onote-type").value; if (v) { onote(v, S.ontype === "Note" ? "" : S.ontype); render(); } return; }
   const oq = t.closest("[data-oq]");
   if (oq) { readODraft(); const d = S.odraft, today = isoToday(), k = oq.dataset.oq;
-    if (k === "call") { d.appel = today; if (!d.statut || d.statut === OSTATUTS[0]) d.statut = OSTATUTS[1]; d.relance = addDays(today, 7); onote("appel de suivi"); }
-    if (k === "noanswer") { d.appel = today; if (!d.statut || d.statut === OSTATUTS[0]) d.statut = OSTATUTS[1]; d.relance = addDays(today, 3); onote("appel de suivi sans réponse"); }
+    if (k === "call") { d.appel = today; if (!d.statut || d.statut === OSTATUTS[0]) d.statut = OSTATUTS[1]; d.relance = addDays(today, 7); onote("appel de suivi", "Appel"); }
+    if (k === "noanswer") { d.appel = today; if (!d.statut || d.statut === OSTATUTS[0]) d.statut = OSTATUTS[1]; d.relance = addDays(today, 3); onote("appel de suivi sans réponse", "Sans réponse"); }
     if (k === "r7") d.relance = addDays(today, 7);
     if (k === "r30") d.relance = addDays(today, 30);
-    if (k === "nego") { d.statut = OSTATUTS[2]; if (!d.relance || d.relance <= today) d.relance = addDays(today, 7); onote("négociation en cours"); }
-    if (k === "won") { d.statut = OSTATUTS[3]; d.relance = ""; d.proba = ""; onote("commande reçue"); }
-    if (k === "lost") { d.statut = OSTATUTS[4]; d.relance = ""; d.proba = ""; onote("offre perdue"); }
+    if (k === "nego") { d.statut = OSTATUTS[2]; if (!d.relance || d.relance <= today) d.relance = addDays(today, 7); onote("négociation en cours", "Offre"); }
+    if (k === "won") { d.statut = OSTATUTS[3]; d.relance = ""; d.proba = ""; onote("commande reçue", "Offre"); }
+    if (k === "lost") { d.statut = OSTATUTS[4]; d.relance = ""; d.proba = ""; onote("offre perdue", "Offre"); }
     render(); if (k === "lost") setTimeout(() => document.getElementById("o-motif")?.focus(), 0); return; }
   if (t.id === "osave") { readODraft(); const d = S.odraft;
     if (!String(d.soc).trim()) { toast("Indiquez le nom de la société"); document.getElementById("o-soc").focus(); return; }
     if (d.statut === OSTATUTS[4] && !String(d.motif).trim()) { toast("Offre perdue : indiquez le motif"); document.getElementById("o-motif").focus(); return; }
-    const isNew = !d.id; if (isNew) onote("suivi créé" + (d.num ? " · offre n° " + d.num : ""));
+    const isNew = !d.id; if (isNew) onote("suivi créé" + (d.num ? " · offre n° " + d.num : ""), "Offre");
     t.disabled = true;
     try { let saved = await SupaStore.saveOffre({ ...d }, S);
       if (S.opendingFile) { const old = saved.pdfPath, file = S.opendingFile;
@@ -1675,32 +1854,36 @@ $app.addEventListener("click", async e => {
   if (t.id === "print-list") { printList(); return; }
   if (t.id === "print-fiche") { readDraft(); printFiche(S.draft); return; }
   if (t.id === "export") { csvExport(); toast("Export CSV téléchargé"); return; }
+  if (t.id === "install" && S.installEvt) { S.installEvt.prompt(); S.installEvt.userChoice.finally(() => { S.installEvt = null; render(); }); return; }
   if (t.id === "logout") { await SupaStore.logout(); return; }
   if (t.id === "ics") { readDraft(); if (!S.draft.dateRDV) { toast("Indiquez d'abord la date du RDV"); return; } icsFor(S.draft); toast("Fichier .ics téléchargé : ouvrez-le pour l'ajouter à Outlook"); return; }
   if (t.id === "reset-demo") { DemoStore.reset(); Object.assign(S, await DemoStore.load()); toast("Données de démonstration réinitialisées"); render(); return; }
   const q = t.closest("[data-q]");
   if (q) { readDraft(); const d = S.draft, today = isoToday();
-    if (q.dataset.q === "noanswer") { d.nb = (+d.nb || 0) + 1; d.last = today; if (d.etape === ETAPES[0]) d.etape = ETAPES[1]; if (!d.relance || d.relance <= today) d.relance = addDays(today, 3); note("appel sans réponse"); }
+    if (q.dataset.q === "noanswer") { d.nb = (+d.nb || 0) + 1; d.last = today; if (d.etape === ETAPES[0]) d.etape = ETAPES[1]; if (!d.relance || d.relance <= today) d.relance = addDays(today, 3); note("appel sans réponse", "Sans réponse"); }
     if (q.dataset.q === "r2") d.relance = addDays(today, 2);
     if (q.dataset.q === "r7") d.relance = addDays(today, 7);
     if (q.dataset.q === "r30") d.relance = addDays(today, 30);
-    if (q.dataset.q === "propose") { d.etape = ETAPES[2]; d.last = today; if (!d.relance) d.relance = addDays(today, 3); note("créneau proposé"); }
-    if (q.dataset.q === "fixed") { d.etape = ETAPES[3]; d.last = today; d.relance = ""; note("RDV fixé"); }
-    if (q.dataset.q === "done") { d.etape = ETAPES[4]; note("RDV réalisé"); }
+    if (q.dataset.q === "propose") { d.etape = ETAPES[2]; d.last = today; if (!d.relance) d.relance = addDays(today, 3); note("créneau proposé", "Appel"); }
+    if (q.dataset.q === "fixed") { d.etape = ETAPES[3]; d.last = today; d.relance = ""; note("RDV fixé", "RDV"); }
+    if (q.dataset.q === "done") { d.etape = ETAPES[4]; note("RDV réalisé", "Visite"); }
     render(); if (q.dataset.q === "fixed") setTimeout(() => document.getElementById("d-dateRDV")?.focus(), 0); return; }
-  if (t.id === "addnote") { readDraft(); const v = document.getElementById("note").value.trim(); if (v) { note(v); render(); } return; }
+  if (t.id === "addnote") { readDraft(); const v = document.getElementById("note").value.trim(); S.ntype = document.getElementById("note-type").value; if (v) { note(v, S.ntype === "Note" ? "" : S.ntype); render(); } return; }
   if (t.id === "save") { readDraft(); const d = S.draft;
     if (!d.soc.trim()) { toast("Indiquez le nom de la société"); document.getElementById("d-soc").focus(); return; }
     let auto = false;
     if (d.dateRDV && [ETAPES[0], ETAPES[1], ETAPES[2], ETAPES[5]].includes(d.etape)) {
       d.etape = ETAPES[3]; d.relance = ""; d.last = isoToday(); auto = true;
-      note("RDV fixé le " + frShort(d.dateRDV) + (d.heure ? " à " + d.heure : "")); }
+      note("RDV fixé le " + frShort(d.dateRDV) + (d.heure ? " à " + d.heure : ""), "RDV"); }
     if (d.etape === ETAPES[3] && !d.dateRDV) { toast("RDV fixé : indiquez la date"); document.getElementById("d-dateRDV").focus(); return; }
     const isNew = !d.id;
     const prev = S.fiches.find(x => String(x.id) === String(d.id));
+    const geoChange = SupaStore.hasCol("lat") && (isNew || !prev || ["adr","pays","zone"].some(k => String(prev[k] || "") !== String(d[k] || "")));
+    if (geoChange) { d.lat = ""; d.lng = ""; d.geo = ""; }
     if (prev && prev.etape === ETAPES[3] && (prev.dateRDV !== d.dateRDV || prev.heure !== d.heure)) d.agenda = "";
     if (CONFIG.mode === "demo") { if (isNew) d.entree = isoToday(); d.modif = fr(isoToday()) + " par " + (S.role === "DM" ? "Damien" : "Assistante"); }
-    try { const saved = await Store.saveFiche({...d}, S); S.sel = saved.id; S.draft = {...saved}; toast((isNew ? "Fiche créée" : "Fiche enregistrée") + (auto ? " · étape passée en 4-RDV fixé" : "")); render(); }
+    try { const saved = await Store.saveFiche({...d}, S); S.sel = saved.id; S.draft = {...saved}; toast((isNew ? "Fiche créée" : "Fiche enregistrée") + (auto ? " · étape passée en 4-RDV fixé" : "")); render();
+      if (geoChange && (saved.adr || saved.zone)) placeOne(saved); }
     catch (err) { toast("Enregistrement impossible : " + err.message); }
     return; }
 });
@@ -1719,6 +1902,9 @@ $app.addEventListener("change", async e => {
       Object.assign(S, await Store.load()); log("Terminé : " + n + " fiches importées."); render(); }
     catch (err) { log("Erreur : " + err.message); inp.disabled = false; }
     return; }
+  if (e.target.id === "note-type") { S.ntype = e.target.value; return; }
+  if (e.target.id === "onote-type") { S.ontype = e.target.value; return; }
+  if (e.target.dataset && e.target.dataset.ik) { readDraft(); return; }
   if (e.target.id === "f-flag") { S.flt.flag = e.target.checked ? "1" : ""; saveUi(); render(); return; }
   if (e.target.id === "f-piece" && e.target.files[0]) { const file = e.target.files[0]; readDraft();
     if (file.size > 20 * 1048576) { toast("Fichier trop volumineux (20 Mo maximum)"); return; }
@@ -1783,6 +1969,8 @@ document.addEventListener("keydown", e => { if (e.key !== "Escape") return;
   boot2();
   render();
 })();
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); S.installEvt = e; if (S.view === "setup") render(); });
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 function boot2() {
   if (S.needsLogin || S.notMember || boot2.done) return; boot2.done = true;
   if (!S.fiches.length) S.view = "setup";

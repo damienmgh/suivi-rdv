@@ -932,7 +932,7 @@ async function geocodeFiche(f) {
   const cc = CC[f.pays], pn = PAYS_NOM[f.pays] || "", adr = String(f.adr || "").replace(/attention[^:]*:/i, "").replace(/\s+/g, " ").trim();
   const tries = [];
   if (adr) tries.push([adr + (pn ? ", " + pn : ""), "adresse"]);
-  const cp = adr.match(/\b(\d{4,5})\s+([A-Za-zÀ-ÿ'][A-Za-zÀ-ÿ' -]{2,})/); if (cp) tries.push([cp[1] + " " + cp[2].trim() + (pn ? ", " + pn : ""), "ville"]);
+  const nd = { FR: 5, DE: 5, BE: 4, LU: 4, NL: 4 }[f.pays], cps = [...adr.matchAll(/\b(?:[A-Z]-)?(\d{4,5})\s+([A-Za-zÀ-ÿ'][A-Za-zÀ-ÿ' -]{2,})/g)].filter(m => !nd || m[1].length === nd), cp = cps.length ? cps[cps.length - 1] : null; if (cp) tries.push([cp[1] + " " + cp[2].trim() + (pn ? ", " + pn : ""), "ville"]);
   const z = String(f.zone || "").trim();
   if (z) tries.push([f.pays === "FR" && /^\d{1,2}$/.test(z) ? (DEPTS[z.padStart(2, "0")] || z) + ", France" : z + (pn ? ", " + pn : ""), "zone"]);
   const want = cp ? cp[1] : "", okPc = r => !want || !r.pc || String(r.pc).replace(/\D/g, "").slice(0, 2) === want.slice(0, 2);

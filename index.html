@@ -574,7 +574,8 @@ const SupaStore = {
     if (error) throw new Error(error.message);
   },
   hasCol(c) { return !this.ficheCols || this.ficheCols.has(c); },
-  async setGeo(id, g) { const { error } = await this.client().from("fiches").update({ lat: g.lat ?? null, lng: g.lng ?? null, geo: g.geo || null }).eq("id", id); if (error) throw new Error(error.message); },
+  async setGeo(id, g) { const n = v => v === "" || v === undefined || v === null || isNaN(+v) ? null : +v;
+    const { error } = await this.client().from("fiches").update({ lat: n(g.lat), lng: n(g.lng), geo: g.geo || null }).eq("id", id); if (error) throw new Error(error.message); },
   isAdmin() { return (this.user || "").toLowerCase() === "damien@mgh.be"; },
   async deleteFiche(id, state) {
     const paths = state.pieces.filter(x => String(x.ficheId) === String(id)).map(x => x.path);
@@ -923,9 +924,9 @@ const DEPTS = {"01":"Ain","02":"Aisne","03":"Allier","04":"Alpes-de-Haute-Proven
 const CC = { BE: "be", FR: "fr", LU: "lu", NL: "nl", DE: "de" };
 const pause = ms => new Promise(r => setTimeout(r, ms));
 async function nomi(q, cc) {
-  const u = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=fr&countrycodes=" + (cc || "be,fr,lu,nl,de") + "&q=" + encodeURIComponent(q);
+  const u = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&accept-language=fr&countrycodes=" + (cc || "be,fr,lu,nl,de") + "&q=" + encodeURIComponent(q);
   const r = await fetch(u, { headers: { Accept: "application/json" } }); if (!r.ok) throw new Error("service de géolocalisation : HTTP " + r.status);
-  const d = await r.json(); await pause(1100); return d[0] ? { lat: +d[0].lat, lng: +d[0].lon } : null;
+  const d = await r.json(); await pause(1100); return d[0] ? { lat: +d[0].lat, lng: +d[0].lon, pc: (d[0].address && d[0].address.postcode) || "" } : null;
 }
 async function geocodeFiche(f) {
   const cc = CC[f.pays], pn = PAYS_NOM[f.pays] || "", adr = String(f.adr || "").replace(/attention[^:]*:/i, "").replace(/\s+/g, " ").trim();
@@ -934,13 +935,14 @@ async function geocodeFiche(f) {
   const cp = adr.match(/\b(\d{4,5})\s+([A-Za-zÀ-ÿ'][A-Za-zÀ-ÿ' -]{2,})/); if (cp) tries.push([cp[1] + " " + cp[2].trim() + (pn ? ", " + pn : ""), "ville"]);
   const z = String(f.zone || "").trim();
   if (z) tries.push([f.pays === "FR" && /^\d{1,2}$/.test(z) ? (DEPTS[z.padStart(2, "0")] || z) + ", France" : z + (pn ? ", " + pn : ""), "zone"]);
-  for (const [q, geo] of tries) { const r = await nomi(q, cc); if (r) return { ...r, geo }; }
+  const want = cp ? cp[1] : "", okPc = r => !want || !r.pc || String(r.pc).replace(/\D/g, "").slice(0, 2) === want.slice(0, 2);
+  for (const [q, geo] of tries) { const r = await nomi(q, cc); if (r && (geo === "zone" || okPc(r))) return { lat: r.lat, lng: r.lng, geo }; }
   return { lat: "", lng: "", geo: "introuvable" };
 }
 async function placeOne(f) { if (!SupaStore.hasCol("lat") || S.access === "lecture") return; try { const g = await geocodeFiche(f); await SupaStore.setGeo(f.id, g); const x = S.fiches.find(y => y.id === f.id); if (x) Object.assign(x, g); if (S.view === "fiches" && S.fmode === "carte" && !S.sel) render(); } catch (e) {} }
 async function geoRun() {
   if (S.geoRun) { S.geoRun.stop = true; return; }
-  const todo = S.fiches.filter(f => (f.lat === "" || f.lat === null) && f.geo !== "introuvable"); if (!todo.length) { toast("Toutes les fiches sont déjà placées"); return; }
+  const todo = S.fiches.filter(f => f.id && (f.lat === "" || f.lat === null) && f.geo !== "introuvable"); if (!todo.length) { toast("Toutes les fiches sont déjà placées"); return; }
   const run = S.geoRun = { done: 0, total: todo.length, ok: 0, stop: false }; render();
   let errs = 0;
   for (const f of todo) { if (run.stop) break;
@@ -2010,7 +2012,7 @@ function boot2() {
   SupaStore.live((table, p) => {
     const map = { fiches: COLS, offres: OCOLS, contacts: CCOLS, pieces: PCOLS }[table] || TCOLS, list = { fiches: S.fiches, offres: S.offres, contacts: S.contacts, pieces: S.pieces }[table] || S.tournees;
     if (p.eventType === "DELETE") { const i = list.findIndex(x => x.id === p.old.id); if (i >= 0) list.splice(i, 1); }
-    else { const o = SupaStore.fromDb(p.new, map); const i = list.findIndex(x => x.id === o.id); if (i >= 0) list[i] = o; else list.unshift(o); }
+    else { if (!p.new || p.new.id === undefined || p.new.id === null) return; const o = SupaStore.fromDb(p.new, map); const i = list.findIndex(x => x.id === o.id); if (i >= 0) list[i] = o; else list.unshift(o); }
     if (table === "pieces" && S.sel) { render(); return; }
     if (S.sel || S.osel || S.csel || (table === "contacts" && S.cimport)) { S.pending = true; } else render();
   });

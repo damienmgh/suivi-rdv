@@ -244,6 +244,12 @@ tr.flag>td{background:var(--warn-soft)}tr.flag>td:first-child{box-shadow:inset 4
 .map-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted);margin-top:8px;align-items:center}
 .map-legend .sw{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .leaflet-popup-content{font-family:var(--f-body);font-size:13px;line-height:1.4}.leaflet-popup-content b{font-size:14px}
+.msel{position:relative}.msel>button{padding:8px 12px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--ink);font:inherit;font-size:15px;min-height:38px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msel>button.on{border-color:var(--accent);color:var(--accent)}
+.msel-p{position:absolute;top:calc(100% + 4px);left:0;z-index:30;width:320px;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--line);border-radius:4px;box-shadow:var(--shadow);padding:10px;display:grid;gap:8px}
+.msel-p .lst{max-height:340px;overflow:auto;display:grid;gap:2px}
+.msel-p label{display:flex;gap:8px;align-items:center;font-size:14px;padding:3px 4px;border-radius:3px;cursor:pointer}.msel-p label:hover{background:var(--surface-2)}
+.msel-p label small{margin-left:auto;color:var(--muted)}.msel-p .grp{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--label);text-transform:uppercase;margin-top:6px}
 @media print{
   body::before,header.top,main,#toast{display:none!important}
   :root{padding:0!important}
@@ -620,8 +626,9 @@ const Store = CONFIG.mode === "supabase" ? SupaStore : DemoStore;
 /* ===================== État de l'interface ===================== */
 const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], offres: [], contacts: [], pieces: [], csel: null, cdraft: null, cq: "", pick: false, pickQ: "", osel: null, odraft: null, opendingFile: null,
   oflt: { q: "", statut: "", alerte: "", resp: "", open: "1" }, osort: ["relance", 1], view: "dash", role: "DM", sel: null, draft: null,
-  flt: { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1", flag: "" }, sort: ["relance", 1] };
+  flt: { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1", flag: "", zones: [] }, sort: ["relance", 1] };
 try { const p = JSON.parse(localStorage.getItem("mgh-suivi-rdv-ui") || "{}"); if (p.role) S.role = p.role; if (p.flt) Object.assign(S.flt, p.flt); } catch (e) {}
+if (!Array.isArray(S.flt.zones)) S.flt.zones = [];
 try { S.agMode = localStorage.getItem("mgh-ag-mode") || "mois"; S.fmode = localStorage.getItem("mgh-fmode") || "liste"; } catch (e) {}
 const saveUi = () => { try { localStorage.setItem("mgh-suivi-rdv-ui", JSON.stringify({ role: S.role, flt: S.flt })); } catch (e) {} };
 const $app = document.getElementById("app");
@@ -713,7 +720,7 @@ function filtered() {
   let L = S.fiches.filter(f =>
     (!q || [f.soc, f.contact, f.objet, f.zone, f.hist, f.adr, f.id, intl(f).map(x => x.nom + " " + x.fonction).join(" ")].join(" ").toLowerCase().includes(q)) &&
     (!S.flt.etape || f.etape === S.flt.etape) && (!S.flt.pays || f.pays === S.flt.pays) &&
-    (!S.flt.flag || !SupaStore.hasFlag || f.flag === true) && (!S.flt.prio || String(f.prio) === S.flt.prio) && (!S.flt.resp || f.resp === S.flt.resp) &&
+    (!(S.flt.zones || []).length || S.flt.zones.includes(zkey(f))) && (!S.flt.flag || !SupaStore.hasFlag || f.flag === true) && (!S.flt.prio || String(f.prio) === S.flt.prio) && (!S.flt.resp || f.resp === S.flt.resp) &&
     (!S.flt.alerte || (S.flt.alerte === "*" ? alerte(f) : alerte(f) === S.flt.alerte)) &&
     (S.flt.open !== "1" || S.flt.etape || !closed(f)));
   const [k, dir] = S.sort;
@@ -735,6 +742,7 @@ function viewFiches() {
         <select id="f-etape" aria-label="Étape">${opts(ETAPES, S.flt.etape, "Toutes étapes")}</select>
         <select id="f-alerte" aria-label="Alerte"><option value="">Toutes alertes</option><option value="*" ${S.flt.alerte === "*" ? "selected" : ""}>Avec alerte</option>${ALERTS.map(([a]) => `<option ${S.flt.alerte === a ? "selected" : ""}>${esc(a)}</option>`).join("")}</select>
         <select id="f-pays" aria-label="Pays">${opts(PAYS, S.flt.pays, "Tous pays")}</select>
+        ${zoneSel()}
         <select id="f-prio" aria-label="Priorité">${prioOpts(S.flt.prio, "Toutes priorités")}</select>
         <select id="f-resp" aria-label="Responsable">${opts(RESP, S.flt.resp, "Tous responsables")}</select>
         <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="f-open" ${S.flt.open === "1" ? "checked" : ""}> Masquer réalisés / refus</label>
@@ -963,6 +971,20 @@ function drawMap(L) {
     if (S.mapView) m.setView(S.mapView.c, S.mapView.z); else if (pts.length) m.fitBounds(pts, { padding: [30, 30], maxZoom: 11 }); else m.setView([50.4, 3.8], 7);
     m.on("moveend", () => { S.mapView = { c: m.getCenter(), z: m.getZoom() }; });
   }).catch(e => { const el = document.getElementById("fmap"); if (el) el.innerHTML = `<p class="empty" style="padding:16px">Carte indisponible : ${esc(e.message)}</p>`; });
+}
+const zkey = f => (f.pays || "") + "|" + String(f.zone || "").trim();
+const zlab = k => { const [p, z] = k.split("|"); return !z ? "(sans zone)" : p === "FR" && /^\d{1,2}$/.test(z) ? z.padStart(2, "0") + " · " + (DEPTS[z.padStart(2, "0")] || "") : z; };
+function zoneSel() {
+  const sel = S.flt.zones || [], cnt = {}; S.fiches.forEach(f => { const k = zkey(f); cnt[k] = (cnt[k] || 0) + 1; });
+  const q = (S.zq || "").toLowerCase(), keys = Object.keys(cnt).sort((a, b) => a.split("|")[0].localeCompare(b.split("|")[0]) || zlab(a).localeCompare(zlab(b), "fr", { numeric: true }));
+  const lab = !sel.length ? "Toutes zones" : sel.length === 1 ? zlab(sel[0]) : sel.length + " zones";
+  let g = null;
+  const items = keys.filter(k => !q || (zlab(k) + " " + k).toLowerCase().includes(q)).map(k => { const p = k.split("|")[0] || "Sans pays", h = p !== g ? `<div class="grp">${esc(PAYS_NOM[p] || p)}</div>` : ""; g = p;
+    return h + `<label><input type="checkbox" data-zone="${esc(k)}" ${sel.includes(k) ? "checked" : ""}> ${esc(zlab(k))}<small class="num">${cnt[k]}</small></label>`; }).join("");
+  return `<div class="msel" id="zsel"><button type="button" class="${sel.length ? "on" : ""}" id="zsel-btn" aria-expanded="${!!S.zopen}" title="${esc(sel.map(zlab).join(", "))}">${esc(lab)} ▾</button>
+    ${S.zopen ? `<div class="msel-p"><input type="search" id="zq" placeholder="Rechercher une zone…" value="${esc(S.zq || "")}" aria-label="Rechercher une zone">
+      <div class="lst">${items || `<p class="empty" style="margin:0">Aucune zone.</p>`}</div>
+      <div style="display:flex;justify-content:space-between;gap:8px"><button type="button" class="btn small" id="zclear">Toutes zones</button><button type="button" class="btn small primary" id="zclose">Fermer</button></div></div>` : ""}</div>`;
 }
 const rdvsIn = x => S.fiches.filter(f => f.etape === ETAPES[3] && f.dateRDV && f.dateRDV >= x.du && f.dateRDV <= (x.au || x.du))
   .sort((a, b) => (a.dateRDV + a.heure).localeCompare(b.dateRDV + b.heure));
@@ -1576,7 +1598,7 @@ function printHead(title, sub) {
 }
 function printList() {
   const L = filtered(), F = S.flt;
-  const crit = [F.q && "recherche « " + F.q + " »", F.etape, F.alerte && (F.alerte === "*" ? "avec alerte" : F.alerte), F.pays, F.prio && "priorité " + prioLbl(F.prio), F.resp, F.open === "1" && !F.etape && "réalisés et refus masqués"].filter(Boolean);
+  const crit = [F.q && "recherche « " + F.q + " »", F.etape, F.alerte && (F.alerte === "*" ? "avec alerte" : F.alerte), F.pays, (F.zones || []).length && "zones " + F.zones.map(zlab).join(", "), F.prio && "priorité " + prioLbl(F.prio), F.resp, F.open === "1" && !F.etape && "réalisés et refus masqués"].filter(Boolean);
   const rows = L.map(f => `<tr${f.flag === true ? ' style="background:#FBF0DF"' : ""}><td><b>${f.flag === true ? "⚑ " : ""}${esc(f.soc)}</b>${f.ref ? "<br><span style='color:#6B6E74'>" + esc(f.ref) + "</span>" : ""}</td><td>${esc(f.contact)}</td><td>${esc(f.tel)}</td>
     <td>${esc([f.pays, f.zone].filter(Boolean).join(" · "))}</td><td>${esc(prioLbl(f.prio))}</td><td>${esc(f.etape)}</td><td>${esc(alerte(f))}</td>
     <td>${fr(f.relance)}</td><td>${f.dateRDV ? fr(f.dateRDV) + " " + esc(f.heure) : ""}</td><td>${esc(f.resp)}</td><td>${esc(f.objet)}</td></tr>`).join("");
@@ -1701,6 +1723,9 @@ document.getElementById("role").addEventListener("click", e => { const b = e.tar
 
 $app.addEventListener("click", async e => {
   const t = e.target;
+  if (t.closest("#zsel-btn")) { S.zopen = !S.zopen; S.zq = ""; render(); if (S.zopen) setTimeout(() => document.getElementById("zq")?.focus(), 0); return; }
+  if (t.id === "zclose") { S.zopen = false; render(); return; }
+  if (t.id === "zclear") { S.flt.zones = []; saveUi(); render(); return; }
   const fm = t.closest("[data-fmode]"); if (fm) { S.fmode = fm.dataset.fmode; try { localStorage.setItem("mgh-fmode", S.fmode); } catch (e) {} render(); return; }
   if (t.closest("#geo-run")) { if (S.access === "lecture") return; geoRun(); return; }
   const ar = t.closest("[data-act-role]"); if (ar) { S.actRole = ar.dataset.actRole; render(); return; }
@@ -1808,7 +1833,7 @@ $app.addEventListener("click", async e => {
   const ga = t.closest("[data-goto-alerte]"); if (ga) { Object.assign(S.flt, { alerte: ga.dataset.gotoAlerte, etape: "", q: "" }); saveUi(); go("fiches"); return; }
   const gv = t.closest("[data-view-go]"); if (gv) { go(gv.dataset.viewGo); return; }
   const so = t.closest("[data-sort]"); if (so) { const k = so.dataset.sort; S.sort = [k, S.sort[0] === k ? -S.sort[1] : 1]; render(); return; }
-  if (t.id === "f-reset") { S.flt = { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1", flag: "" }; saveUi(); render(); return; }
+  if (t.id === "f-reset") { S.flt = { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1", flag: "", zones: [] }; S.zopen = false; saveUi(); render(); return; }
   if (t.id === "new") { newFiche(); return; }
   if (t.id === "close" || t.id === "cancel") { S.sel = null; S.draft = null; S.pending = false; if (S.back) { S.view = S.back; S.back = null; } render(); return; }
   if (t.id === "del") { S.confirmDel = S.draft.id; render(); return; }
@@ -1889,6 +1914,7 @@ $app.addEventListener("click", async e => {
 });
 $app.addEventListener("input", e => {
   const t = e.target;
+  if (t.id === "zq") { S.zq = t.value; clearTimeout(render.h); render.h = setTimeout(() => { render(); const q = document.getElementById("zq"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 150); }
   if (t.id === "cq" || t.id === "pick-q") { const id = t.id; if (id === "cq") S.cq = t.value; else S.pickQ = t.value; if (id === "pick-q") readDraft();
     clearTimeout(render.h); render.h = setTimeout(() => { render(); const q = document.getElementById(id); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 180); }
   if (t.id === "oq") { S.oflt.q = t.value; clearTimeout(render.h); render.h = setTimeout(() => { render(); const q = document.getElementById("oq"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 180); }
@@ -1902,6 +1928,7 @@ $app.addEventListener("change", async e => {
       Object.assign(S, await Store.load()); log("Terminé : " + n + " fiches importées."); render(); }
     catch (err) { log("Erreur : " + err.message); inp.disabled = false; }
     return; }
+  if (e.target.dataset && e.target.dataset.zone) { const k = e.target.dataset.zone, Z = new Set(S.flt.zones || []); e.target.checked ? Z.add(k) : Z.delete(k); S.flt.zones = [...Z]; saveUi(); render(); return; }
   if (e.target.id === "note-type") { S.ntype = e.target.value; return; }
   if (e.target.id === "onote-type") { S.ontype = e.target.value; return; }
   if (e.target.dataset && e.target.dataset.ik) { readDraft(); return; }
@@ -1956,7 +1983,9 @@ $app.addEventListener("submit", async e => {
   try { await Store.saveTournee({ id: "", du: v("t-du"), au: v("t-au"), zone: v("t-zone"), dispo: v("t-dispo"), consigne: v("t-cons") }, S); toast("Tournée ajoutée"); render(); }
   catch (err) { toast("Enregistrement impossible : " + err.message); }
 });
+document.addEventListener("click", e => { if (S.zopen && e.target.isConnected && !e.target.closest("#zsel")) { S.zopen = false; render(); } });
 document.addEventListener("keydown", e => { if (e.key !== "Escape") return;
+  if (S.zopen) { S.zopen = false; render(); return; }
   if (S.pick) { S.pick = false; render(); return; }
   if (S.csel) { S.csel = null; S.cdraft = null; render(); return; }
   if (S.sel) { S.sel = null; S.draft = null; if (S.back) { S.view = S.back; S.back = null; } render(); }

@@ -942,10 +942,13 @@ async function geoRun() {
   if (S.geoRun) { S.geoRun.stop = true; return; }
   const todo = S.fiches.filter(f => (f.lat === "" || f.lat === null) && f.geo !== "introuvable"); if (!todo.length) { toast("Toutes les fiches sont déjà placées"); return; }
   const run = S.geoRun = { done: 0, total: todo.length, ok: 0, stop: false }; render();
+  let errs = 0;
   for (const f of todo) { if (run.stop) break;
-    try { const g = await geocodeFiche(f); await SupaStore.setGeo(f.id, g); Object.assign(f, g); if (g.lat !== "") run.ok++; }
-    catch (e) { toast("Placement interrompu : " + e.message); break; }
-    run.done++; const el = document.getElementById("geo-prog"); if (el) el.textContent = "Placement en cours : " + run.done + " / " + run.total + " (cliquez pour arrêter)"; }
+    let g = null;
+    for (let k = 0; k < 3 && !g && !run.stop; k++) { try { g = await geocodeFiche(f); } catch (e) { run.err = e.message; await pause(4000 * (k + 1)); } }
+    if (g) { try { await SupaStore.setGeo(f.id, g); const x = S.fiches.find(y => y.id === f.id); if (x) Object.assign(x, g); if (g.lat !== "") run.ok++; errs = 0; } catch (e) { run.err = e.message; g = null; } }
+    if (!g && ++errs >= 5) { toast("Placement interrompu (" + (run.err || "service indisponible") + ") : relancez plus tard"); break; }
+    run.done++; const el = document.getElementById("geo-prog"); if (el) el.textContent = "Placement en cours : " + run.done + " / " + run.total + " · gardez cet onglet ouvert et visible (cliquez pour arrêter)"; }
   S.geoRun = null; toast(run.ok + " fiche(s) placée(s) sur " + run.done + " traitée(s)"); render();
 }
 function mapBlock(L) {
@@ -954,7 +957,7 @@ function mapBlock(L) {
     <div class="map-legend">${ETAPES.map((e, i) => `<span><span class="sw" style="background:${ET_COLORS[i]}"></span>${esc(e)}</span>`).join("")}
       <span><span class="sw" style="background:#fff;border:3px solid #C77700"></span>flag</span><span>grand point = P MAX ou P1 · point pâle = position approximative (ville ou zone)</span></div>
     <div class="map-legend" style="justify-content:space-between"><span class="num">${placed.length} / ${L.length} fiche(s) affichée(s) sur la carte${nf ? " · " + nf + " adresse(s) introuvable(s) : à corriger dans la fiche" : ""}</span>
-      ${SupaStore.hasCol("lat") ? (S.geoRun ? `<button class="btn small w" id="geo-run"><span id="geo-prog">Placement en cours : ${S.geoRun.done} / ${S.geoRun.total} (cliquez pour arrêter)</span></button>` : todo ? `<button class="btn small primary w" id="geo-run">Placer ${todo} fiche(s) sur la carte</button>` : "") : `<span>Carte en cours d'activation dans la base.</span>`}</div>`;
+      ${SupaStore.hasCol("lat") ? (S.geoRun ? `<button class="btn small w" id="geo-run"><span id="geo-prog">Placement en cours : ${S.geoRun.done} / ${S.geoRun.total} · gardez cet onglet ouvert et visible (cliquez pour arrêter)</span></button>` : todo ? `<button class="btn small primary w" id="geo-run">Placer ${todo} fiche(s) sur la carte</button>` : "") : `<span>Carte en cours d'activation dans la base.</span>`}</div>`;
 }
 function drawMap(L) {
   loadLeaflet().then(() => {

@@ -637,7 +637,7 @@ const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tour
   flt: { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1", flag: "", zones: [] }, sort: ["relance", 1] };
 try { const p = JSON.parse(localStorage.getItem("mgh-suivi-rdv-ui") || "{}"); if (p.role) S.role = p.role; if (p.flt) Object.assign(S.flt, p.flt); } catch (e) {}
 if (!Array.isArray(S.flt.zones)) S.flt.zones = [];
-try { S.agMode = localStorage.getItem("mgh-ag-mode") || "mois"; S.fmode = localStorage.getItem("mgh-fmode") || "liste"; } catch (e) {}
+try { S.agMode = localStorage.getItem("mgh-ag-mode") || "mois"; S.fmode = localStorage.getItem("mgh-fmode") || "liste"; S.cHide = localStorage.getItem("mgh-c-hide") === "1"; } catch (e) {}
 const saveUi = () => { try { localStorage.setItem("mgh-suivi-rdv-ui", JSON.stringify({ role: S.role, flt: S.flt })); } catch (e) {} };
 const $app = document.getElementById("app");
 function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 2200); }
@@ -1334,7 +1334,7 @@ function prepareImport(list) {
     else { out.push(c); neuf++; } });
   return { rows: out, neuf, maj, dbl, total: list.length };
 }
-function cFiltered() { return S.contacts.filter(c => contactMatch(c, S.cq)).sort((a, b) => (a.nom || a.societe || "").localeCompare(b.nom || b.societe || "") || (a.prenom || "").localeCompare(b.prenom || "")); }
+function cFiltered() { return S.contacts.filter(c => contactMatch(c, S.cq) && (!S.cHide || cname(c).trim())).sort((a, b) => (a.nom || a.societe || "").localeCompare(b.nom || b.societe || "") || (a.prenom || "").localeCompare(b.prenom || "")); }
 function viewCarnet() {
   if (S.contactsKo) return `<div class="panel"><b>Le carnet d'adresses n'est pas encore activé dans la base.</b><p class="demo-note">Détail : ${esc(S.contactsKo)}</p></div>`;
   const L = cFiltered(), imp = S.cimport;
@@ -1346,6 +1346,7 @@ function viewCarnet() {
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">${imp.rows.length ? `<button class="btn small primary" id="cimp-ok" ${imp.busy ? "disabled" : ""}>${imp.busy ? "Import en cours… " + esc(imp.prog || "") : "Importer " + imp.rows.length + " contact(s)"}</button>` : `<span>Rien à importer : le carnet est déjà à jour.</span>`}<button class="btn small" id="cimp-no" ${imp.busy ? "disabled" : ""}>Annuler</button></div></div>` : ""}
     <div class="filters">
       <input type="search" id="cq" placeholder="Rechercher nom, société, fonction, mail, téléphone, ville…" value="${esc(S.cq)}" aria-label="Rechercher un contact">
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="c-hide" ${S.cHide ? "checked" : ""}> Masquer les contacts sans nom (${S.contacts.filter(c => !cname(c).trim()).length})</label>
       <button class="btn small" id="cexport">Exporter (CSV)</button>
       <span class="count num">${L.length} / ${S.contacts.length} contact(s)</span>
     </div>
@@ -1956,6 +1957,7 @@ $app.addEventListener("change", async e => {
     catch (err) { log("Erreur : " + err.message); inp.disabled = false; }
     return; }
   if (e.target.dataset && e.target.dataset.zone) { const k = e.target.dataset.zone, Z = new Set(S.flt.zones || []); e.target.checked ? Z.add(k) : Z.delete(k); S.flt.zones = [...Z]; saveUi(); render(); return; }
+  if (e.target.id === "c-hide") { S.cHide = e.target.checked; try { localStorage.setItem("mgh-c-hide", S.cHide ? "1" : ""); } catch (er) {} render(); return; }
   if (e.target.id === "note-type") { S.ntype = e.target.value; return; }
   if (e.target.id === "onote-type") { S.ontype = e.target.value; return; }
   if (e.target.dataset && e.target.dataset.ik) { readDraft(); return; }

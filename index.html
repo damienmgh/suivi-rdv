@@ -798,6 +798,7 @@ function sheet() {
         <button class="btn small" data-q="propose">RDV proposé</button>
         <button class="btn small" data-q="fixed">RDV fixé</button>
         <button class="btn small" data-q="done">RDV réalisé</button>
+        <button class="btn small" data-q="cancel">RDV annulé</button>
       </div></div>
       <div class="w"><div class="lbl" style="margin-bottom:6px">Mails préparés (Outlook)</div><div class="mails">
         <button class="btn small" data-mail="contact" type="button">Mail : après appel sans réponse</button>
@@ -1920,6 +1921,7 @@ $app.addEventListener("click", async e => {
     if (q.dataset.q === "propose") { d.etape = ETAPES[2]; d.last = today; if (!d.relance) d.relance = addDays(today, 3); note("créneau proposé", "Appel"); }
     if (q.dataset.q === "fixed") { d.etape = ETAPES[3]; d.last = today; d.relance = ""; note("RDV fixé", "RDV"); }
     if (q.dataset.q === "done") { d.etape = ETAPES[4]; note("RDV réalisé", "Visite"); }
+    if (q.dataset.q === "cancel") { const was = d.dateRDV ? " du " + fr(d.dateRDV) + (d.heure ? " à " + d.heure : "") : ""; d.etape = ETAPES[1]; d.dateRDV = ""; d.heure = ""; d.last = today; if (!d.relance || d.relance <= today) d.relance = addDays(today, 3); note("RDV" + was + " annulé", "RDV"); }
     render(); if (q.dataset.q === "fixed") setTimeout(() => document.getElementById("d-dateRDV")?.focus(), 0); return; }
   if (t.id === "addnote") { readDraft(); const v = document.getElementById("note").value.trim(); S.ntype = document.getElementById("note-type").value; if (v) { note(v, S.ntype === "Note" ? "" : S.ntype); render(); } return; }
   if (t.id === "save") { readDraft(); const d = S.draft;

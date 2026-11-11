@@ -362,7 +362,7 @@ const CONFIG = {
   supabaseUrl: "https://qexfitgmhzpgengmbxqk.supabase.co",
   supabaseKey: "sb_publishable_h-VgO27UVILom4l6YFsSdA_wd46MdJf"   // clé publique, protégée par les règles d'accès de la base
 };
-const APP_VERSION = "2026.11.11-1345";
+const APP_VERSION = "2026.11.11-1350";
 const ETAPES = ["1-À contacter","2-Tentative en cours","3-RDV proposé","4-RDV fixé","5-RDV réalisé","6-Recontacter plus tard","7-Refus / hors cible"];
 const ET_COLORS = ["#8F9298","#5468A8","#C77700","#24346C","#2E7D32","#6B6E74","#B71C1C"];
 const LIEUX = ["Sur site client","Atelier Machelen","Atelier Anvers","Teams / visio","Téléphone","Salon / événement"];
@@ -1653,12 +1653,17 @@ function viewLogin(msg) {
   </div>`;
 }
 function doPrint(html, orientation, label) {
-  let st = document.getElementById("page-size");
-  if (!st) { st = document.createElement("style"); st.id = "page-size"; document.head.appendChild(st); }
+  const land = orientation === "landscape";
+  const old = document.getElementById("page-size"); if (old) old.remove();
+  const st = document.createElement("style"); st.id = "page-size"; st.media = "print";
   const q = v => '"' + String(v || "").replace(/[\\"\n]/g, " ") + '"';
-  st.textContent = "@page{size:A4 " + orientation + ";margin:12mm 12mm 15mm;@bottom-left{content:" + q("MGH Industrial Gears · " + (label || "Suivi RDV")) + ";font:8pt Arial,sans-serif;color:#6B6E74}@bottom-right{content:\"Page \" counter(page) \" / \" counter(pages);font:8pt Arial,sans-serif;color:#6B6E74}}";
+  // Format et marges : règle seule, pour rester valable si le navigateur ignore les pieds de page
+  // Portrait : marge gauche élargie pour la perforation ou la reliure
+  st.textContent = "@page{size:" + (land ? "297mm 210mm" : "210mm 297mm") + ";margin:" + (land ? "12mm 14mm 16mm 14mm" : "14mm 14mm 17mm 18mm") + "}" +
+    "@page{@bottom-left{content:" + q("MGH Industrial Gears · " + (label || "Suivi RDV")) + ";font:8pt Arial,sans-serif;color:#6B6E74}@bottom-right{content:\"Page \" counter(page) \" / \" counter(pages);font:8pt Arial,sans-serif;color:#6B6E74}}";
+  document.head.appendChild(st);
   document.getElementById("print").innerHTML = html + `<p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`;
-  setTimeout(() => window.print(), 50);
+  requestAnimationFrame(() => setTimeout(() => window.print(), 80));
 }
 function printHead(title, sub, tag) {
   const logo = document.querySelector(".plate img").src;

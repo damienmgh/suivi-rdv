@@ -273,20 +273,54 @@ tr.flag>td{background:var(--warn-soft)}tr.flag>td:first-child{box-shadow:inset 4
   :root{padding:0!important}
   body{background:#fff!important;color:#222!important;font-size:10pt}
   #print{display:block;color:#222}
-  .p-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #24346C;padding-bottom:8px;margin-bottom:10px}
-  .p-head img{height:34px}
-  .p-head h1{font-size:15pt;margin:0;color:#24346C}
-  .p-head small{display:block;color:#6B6E74;font-size:9pt}
-  .p-table{width:100%;border-collapse:collapse;font-size:8.5pt}
-  .p-table th{background:#24346C!important;color:#fff!important;text-align:left;padding:4px 5px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .p-table td{border-bottom:1px solid #E4E5E7;padding:4px 5px;vertical-align:top}
-  .p-table tr{page-break-inside:avoid}
-  .p-sec{font-size:8.5pt;letter-spacing:.12em;text-transform:uppercase;color:#8F9298;font-weight:700;margin:12px 0 4px;border-bottom:1px solid #E4E5E7}
-  .p-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:3px 18px}
-  .p-grid div{display:flex;gap:6px}.p-grid b{min-width:110px;color:#4A4C52}
+  #print,#print *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #print{font-family:var(--f-body);line-height:1.35}
+  .p-head{display:flex;align-items:center;gap:14px;border-bottom:3px solid #24346C;padding-bottom:9px;margin-bottom:10px}
+  .p-head img{height:42px}
+  .p-ttl{flex:1;min-width:0}
+  .p-head h1{font-family:var(--f-cond);font-size:20pt;line-height:1.1;margin:0;color:#24346C;font-weight:700}
+  .p-head small{display:block;color:#5B6477;font-size:9pt;margin-top:2px}
+  .p-tag{text-align:right;white-space:nowrap}
+  .p-tag b{display:inline-block;background:#24346C;color:#fff;font-family:var(--f-cond);font-size:9.5pt;letter-spacing:.12em;text-transform:uppercase;padding:3px 9px;border-radius:2px}
+  .p-tag span{display:block;font-size:8pt;color:#6B6E74;margin-top:3px}
+  .p-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:0 0 9px}
+  .p-kpi{border:1px solid #D5D8E0;border-left:4px solid #24346C;border-radius:2px;padding:5px 9px;background:#F7F8FA}
+  .p-kpi b{display:block;font-family:var(--f-cond);font-size:7.5pt;letter-spacing:.12em;text-transform:uppercase;color:#5B6477;font-weight:600}
+  .p-kpi span{display:block;font-size:11.5pt;font-weight:700;color:#1C1E24;line-height:1.25}
+  .p-kpi.crit{border-left-color:#B71C1C}.p-kpi.crit span{color:#B71C1C}
+  .p-kpi.ok{border-left-color:#2E7D32}.p-kpi.warn{border-left-color:#C77700}
+  .p-alert{background:#F8E3E3;border-left:4px solid #B71C1C;color:#8E1414;font-weight:700;font-size:9.5pt;padding:4px 9px;margin:0 0 6px}
+  .p-sec{font-family:var(--f-cond);font-size:9.5pt;letter-spacing:.12em;text-transform:uppercase;color:#24346C;font-weight:700;margin:11px 0 5px;padding:3px 8px;background:#E6E9F3;border-left:4px solid #24346C;break-after:avoid;page-break-after:avoid}
+  .p-sec i{font-style:normal;float:right;background:#24346C;color:#fff;border-radius:8px;padding:0 7px;letter-spacing:0}
+  .p-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:0 20px;padding:0 4px}
+  .p-grid div{display:flex;gap:8px;padding:2.5px 0;border-bottom:1px dotted #D5D8E0;break-inside:avoid}
+  .p-grid b{flex:0 0 112px;color:#5B6477;font-weight:600;font-size:8.5pt;padding-top:1px}
+  .p-grid span{color:#1C1E24;font-size:9.5pt;overflow-wrap:anywhere}
   .p-full{grid-column:1/-1}
-  .p-hist{white-space:pre-wrap;font-size:9pt;border:1px solid #E4E5E7;padding:6px}
-  .p-foot{margin-top:10px;font-size:8pt;color:#6B6E74}
+  .p-table{width:100%;border-collapse:collapse;font-size:8.5pt;margin-top:2px}
+  .p-table th{background:#24346C!important;color:#fff!important;text-align:left;padding:5px 6px;font-family:var(--f-cond);font-size:8.5pt;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+  .p-table td{border-bottom:1px solid #DADDE4;padding:4px 6px;vertical-align:top}
+  .p-table tbody tr:nth-child(even) td{background:#F5F6F9}
+  .p-table tbody tr.p-flag td{background:#FBF0DF}
+  .p-table tbody tr.p-flag td:first-child{box-shadow:inset 3px 0 0 #C77700}
+  .p-table tr{page-break-inside:avoid;break-inside:avoid}
+  .p-table tfoot td{border-top:2px solid #24346C;border-bottom:0;font-weight:700;background:#E6E9F3;padding:5px 6px}
+  .p-lines{margin:8px 0 2px}
+  .p-num{text-align:right!important;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .p-nw{white-space:nowrap}.p-mut{color:#6B6E74}
+  .p-al{color:#B71C1C;font-weight:700}
+  .p-prio{display:inline-block;font-weight:700;padding:0 5px;border-radius:2px;border:1px solid #C5C9D2;white-space:nowrap}
+  .p-prio.p0{background:#B71C1C;border-color:#B71C1C;color:#fff}.p-prio.p1{color:#B71C1C;border-color:#B71C1C}.p-prio.p2{color:#9A5B00;border-color:#C77700}
+  .p-hl{font-size:9pt;border:1px solid #DADDE4;border-radius:2px}
+  .p-hl div{display:grid;grid-template-columns:17mm 9mm 29mm 1fr;gap:6px;padding:3px 7px;border-bottom:1px solid #E9EBEF;break-inside:avoid}
+  .p-hl div:last-child{border-bottom:0}.p-hl div:nth-child(even){background:#F5F6F9}
+  .p-hl b{color:#24346C}.p-hl i{font-style:normal;color:#6B6E74}
+  .p-hl em{font-style:normal;font-family:var(--f-cond);font-size:8pt;letter-spacing:.06em;text-transform:uppercase;color:#24346C;font-weight:600}
+  .p-box{border:1px solid #DADDE4;border-left:4px solid #C77700;background:#FBF0DF;padding:6px 9px;font-size:9.5pt;white-space:pre-wrap}
+  .p-none{color:#6B6E74;font-style:italic;font-size:9pt;margin:4px}
+  .p-keep{break-inside:avoid;page-break-inside:avoid}
+  .p-notes{border:1px solid #C5C9D2;border-radius:2px}.p-notes div{height:8.5mm;border-bottom:1px solid #D5D8E0}.p-notes div:last-child{border-bottom:0}
+  .p-foot{margin-top:12px;padding-top:5px;border-top:1px solid #DADDE4;font-size:8pt;color:#6B6E74;text-align:center}
 }
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--night);color:#fff;padding:10px 16px;border-radius:3px;font-weight:600;z-index:60;box-shadow:var(--shadow)}
 @media (prefers-reduced-motion:no-preference){.toast{animation:up .18s ease-out}@keyframes up{from{transform:translate(-50%,8px);opacity:0}}}
@@ -328,7 +362,7 @@ const CONFIG = {
   supabaseUrl: "https://qexfitgmhzpgengmbxqk.supabase.co",
   supabaseKey: "sb_publishable_h-VgO27UVILom4l6YFsSdA_wd46MdJf"   // clé publique, protégée par les règles d'accès de la base
 };
-const APP_VERSION = "2026.11.11-1315";
+const APP_VERSION = "2026.11.11-1345";
 const ETAPES = ["1-À contacter","2-Tentative en cours","3-RDV proposé","4-RDV fixé","5-RDV réalisé","6-Recontacter plus tard","7-Refus / hors cible"];
 const ET_COLORS = ["#8F9298","#5468A8","#C77700","#24346C","#2E7D32","#6B6E74","#B71C1C"];
 const LIEUX = ["Sur site client","Atelier Machelen","Atelier Anvers","Teams / visio","Téléphone","Salon / événement"];
@@ -1618,75 +1652,91 @@ function viewLogin(msg) {
     ${msg ? `<p style="margin:12px 0 0;font-weight:600;color:var(--ink)">${esc(msg)}</p>` : ""}
   </div>`;
 }
-function doPrint(html, orientation) {
+function doPrint(html, orientation, label) {
   let st = document.getElementById("page-size");
   if (!st) { st = document.createElement("style"); st.id = "page-size"; document.head.appendChild(st); }
-  st.textContent = "@page{size:A4 " + orientation + ";margin:12mm}";
-  document.getElementById("print").innerHTML = html;
+  const q = v => '"' + String(v || "").replace(/[\\"\n]/g, " ") + '"';
+  st.textContent = "@page{size:A4 " + orientation + ";margin:12mm 12mm 15mm;@bottom-left{content:" + q("MGH Industrial Gears · " + (label || "Suivi RDV")) + ";font:8pt Arial,sans-serif;color:#6B6E74}@bottom-right{content:\"Page \" counter(page) \" / \" counter(pages);font:8pt Arial,sans-serif;color:#6B6E74}}";
+  document.getElementById("print").innerHTML = html + `<p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`;
   setTimeout(() => window.print(), 50);
 }
-window.addEventListener("afterprint", () => { const p = document.getElementById("print"); if (p) p.innerHTML = ""; });
-function printHead(title, sub) {
+function printHead(title, sub, tag) {
   const logo = document.querySelector(".plate img").src;
-  return `<div class="p-head"><img src="${logo}" alt="MGH Industrial Gears"><div><h1>${esc(title)}</h1><small>${esc(sub)}</small></div></div>`;
+  return `<div class="p-head"><img src="${logo}" alt="MGH Industrial Gears"><div class="p-ttl"><h1>${esc(title)}</h1><small>${esc(sub)}</small></div><div class="p-tag"><b>${esc(tag || "")}</b><span>Imprimé le ${fr(isoToday())}</span></div></div>`;
 }
+const pKv = (k, v, full) => v === "" || v === null || v === undefined ? "" : `<div class="${full ? "p-full" : ""}"><b>${k}</b><span>${esc(v)}</span></div>`;
+const pKpi = (k, v, cls) => `<div class="p-kpi ${cls || ""}"><b>${k}</b><span>${esc(v) || "–"}</span></div>`;
+const pSec = (t, n) => `<div class="p-sec">${t}${n !== undefined ? `<i>${n}</i>` : ""}</div>`;
+function pHist(h) {
+  if (!String(h || "").trim()) return `<p class="p-none">Aucun historique.</p>`;
+  return `<div class="p-hl">` + String(h).split("\n").filter(l => l.trim()).map(l => { const m = l.match(HRX);
+    return m ? `<div><b>${esc(m[1] + "." + m[2] + "." + m[3])}</b><i>${esc(m[4])}</i><em>${esc(m[5] || "Note")}</em><span>${esc(m[6])}</span></div>` : `<div><b></b><i></i><em></em><span>${esc(l)}</span></div>`; }).join("") + `</div>`;
+}
+const pAl = a => a ? `<span class="p-al">${esc(a)}</span>` : "";
+const pPrio = p => hasPrio(p) ? `<span class="p-prio p${+p}">${esc(prioLbl(p))}</span>` : "";
 function printList() {
   const L = filtered(), F = S.flt;
   const crit = [F.q && "recherche « " + F.q + " »", F.etape, F.alerte && (F.alerte === "*" ? "avec alerte" : F.alerte), F.pays, (F.zones || []).length && "zones " + F.zones.map(zlab).join(", "), F.prio && "priorité " + prioLbl(F.prio), F.resp, F.open === "1" && !F.etape && "réalisés et refus masqués"].filter(Boolean);
-  const rows = L.map(f => `<tr${f.flag === true ? ' style="background:#FBF0DF"' : ""}><td><b>${f.flag === true ? "⚑ " : ""}${esc(f.soc)}</b>${f.ref ? "<br><span style='color:#6B6E74'>" + esc(f.ref) + "</span>" : ""}</td><td>${esc(f.contact)}</td><td>${esc(f.tel)}</td>
-    <td>${esc([f.pays, f.zone].filter(Boolean).join(" · "))}</td><td>${esc(prioLbl(f.prio))}</td><td>${esc(f.etape)}</td><td>${esc(alerte(f))}</td>
-    <td>${fr(f.relance)}</td><td>${f.dateRDV ? fr(f.dateRDV) + " " + esc(f.heure) : ""}</td><td>${esc(f.resp)}</td><td>${esc(f.objet)}</td></tr>`).join("");
-  doPrint(printHead("Suivi des rendez-vous · liste des fiches", "Imprimé le " + fr(isoToday()) + " · " + L.length + " fiche(s)" + (crit.length ? " · " + crit.join(", ") : "")) +
-    `<table class="p-table"><colgroup><col style="width:17%"><col style="width:11%"><col style="width:10%"><col style="width:6%"><col style="width:4%"><col style="width:10%"><col style="width:8%"><col style="width:7%"><col style="width:8%"><col style="width:6%"><col style="width:13%"></colgroup><thead><tr><th>Société</th><th>Contact</th><th>Téléphone</th><th>Zone</th><th>Prio</th><th>Étape</th><th>Alerte</th><th>Relance</th><th>RDV</th><th>Resp.</th><th>Objet</th></tr></thead><tbody>${rows}</tbody></table>` +
-    `<p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "landscape");
+  const nAl = L.filter(f => alerte(f)).length, nRdv = L.filter(f => f.etape === ETAPES[3]).length, nFlag = L.filter(f => f.flag === true).length;
+  const rows = L.map(f => `<tr class="${f.flag === true ? "p-flag" : ""}"><td><b>${f.flag === true ? "⚑ " : ""}${esc(f.soc)}</b>${f.ref ? `<br><span class="p-mut">${esc(f.ref)}</span>` : ""}</td><td>${esc(f.contact)}${f.tel ? `<br><span class="p-mut">${esc(f.tel)}</span>` : ""}</td>
+    <td>${esc([f.pays, f.zone].filter(Boolean).join(" · "))}</td><td>${pPrio(f.prio)}</td><td>${esc(f.etape)}</td><td>${pAl(alerte(f))}</td>
+    <td class="p-nw">${fr(f.relance)}</td><td class="p-nw">${f.dateRDV ? "<b>" + fr(f.dateRDV) + "</b><br>" + esc(f.heure) : ""}</td><td>${esc(f.resp)}</td><td>${esc(f.objet)}</td></tr>`).join("");
+  doPrint(printHead("Liste des fiches", crit.length ? "Filtres : " + crit.join(", ") : "Toutes les fiches", "Suivi des rendez-vous") +
+    `<div class="p-kpis">${pKpi("Fiches", L.length)}${pKpi("Avec alerte", nAl, nAl ? "crit" : "")}${pKpi("RDV fixés", nRdv, "ok")}${pKpi("Flaguées", nFlag, nFlag ? "warn" : "")}</div>` +
+    `<table class="p-table"><colgroup><col style="width:18%"><col style="width:14%"><col style="width:8%"><col style="width:6%"><col style="width:11%"><col style="width:10%"><col style="width:7%"><col style="width:7%"><col style="width:6%"><col style="width:13%"></colgroup><thead><tr><th>Société</th><th>Contact</th><th>Zone</th><th>Prio</th><th>Étape</th><th>Alerte</th><th>Relance</th><th>RDV</th><th>Resp.</th><th>Objet</th></tr></thead><tbody>${rows || `<tr><td colspan="10" class="p-none">Aucune fiche.</td></tr>`}</tbody></table>`, "landscape", "Liste des fiches");
 }
 function printFiche(f) {
-  const kv = (k, v, full) => v === "" || v === null || v === undefined ? "" : `<div class="${full ? "p-full" : ""}"><b>${k}</b><span>${esc(v)}</span></div>`;
-  doPrint(printHead(f.soc || "Fiche", [f.ref, "Imprimée le " + fr(isoToday()), f.modif && "modifiée le " + f.modif].filter(Boolean).join(" · ")) +
-    `<div class="p-sec">Société et contact</div><div class="p-grid">${kv("Contact principal", f.contact)}${intl(f).map((x, i) => kv("Interlocuteur " + (i + 1), [x.nom, x.fonction, x.tel, x.mail].filter(Boolean).join(" · "), true)).join("")}${kv("Statut", f.statut)}${kv("Téléphone", f.tel)}${kv("Mail", f.mail)}${kv("Adresse", f.adr, true)}${kv("Pays / zone", [f.pays, f.zone].filter(Boolean).join(" · "))}</div>
-    <div class="p-sec">Pilotage</div><div class="p-grid">${kv("Étape", f.etape)}${kv("Alerte", alerte(f))}${kv("Priorité", prioLbl(f.prio))}${kv("Responsable", f.resp)}${kv("Nb tentatives", f.nb)}${kv("Dernier contact", fr(f.last))}${kv("Prochaine relance", fr(f.relance))}${kv("Date d'entrée", fr(f.entree))}${kv("Objet du RDV", f.objet, true)}${kv("Consigne Damien", f.consigne, true)}</div>
-    ${f.dateRDV ? `<div class="p-sec">Rendez-vous</div><div class="p-grid">${kv("Date", fr(f.dateRDV) + " (" + dow(f.dateRDV) + ")")}${kv("Heure", f.heure)}${kv("Durée", f.duree ? f.duree + " h" : "")}${kv("Lieu / format", f.lieu)}</div>` : ""}
-    <div class="p-sec">Historique</div><div class="p-hist">${esc(f.hist) || "Aucun historique."}</div>
-    <p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "portrait");
+  const a = alerte(f), kv = pKv;
+  doPrint(printHead(f.soc || "Fiche", [f.ref, f.contact, f.modif && "modifiée le " + f.modif].filter(Boolean).join(" · "), "Fiche de rendez-vous") +
+    `<div class="p-kpis">${pKpi("Étape", f.etape)}${pKpi("Priorité", prioLbl(f.prio), +f.prio === 0 && hasPrio(f.prio) ? "crit" : "")}${pKpi("Prochaine relance", fr(f.relance), a === "Relance due" ? "crit" : "")}${pKpi("Rendez-vous", f.dateRDV ? fr(f.dateRDV) + (f.heure ? " · " + f.heure : "") : "", f.dateRDV ? "ok" : "")}</div>
+    ${a ? `<div class="p-alert">Alerte : ${esc(a)}</div>` : ""}
+    ${pSec("Société et contact")}<div class="p-grid">${kv("Contact principal", f.contact)}${kv("Statut", f.statut)}${kv("Téléphone", f.tel)}${kv("Mail", f.mail)}${kv("Adresse", f.adr, true)}${kv("Pays / zone", [f.pays, f.zone].filter(Boolean).join(" · "))}${intl(f).map((x, i) => kv("Interlocuteur " + (i + 1), [x.nom, x.fonction, x.tel, x.mail].filter(Boolean).join(" · "), true)).join("")}</div>
+    ${pSec("Pilotage")}<div class="p-grid">${kv("Responsable", f.resp)}${kv("Nb tentatives", f.nb)}${kv("Dernier contact", fr(f.last))}${kv("Date d'entrée", fr(f.entree))}${kv("Objet du RDV", f.objet, true)}${kv("Consigne Damien", f.consigne, true)}</div>
+    ${f.dateRDV ? pSec("Rendez-vous") + `<div class="p-grid">${kv("Date", fr(f.dateRDV) + " (" + dow(f.dateRDV) + ")")}${kv("Heure", f.heure)}${kv("Durée", f.duree ? f.duree + " h" : "")}${kv("Lieu / format", f.lieu)}</div>` : ""}
+    ${pSec("Historique")}${pHist(f.hist)}
+    <div class="p-keep">${pSec("Notes de visite")}<div class="p-notes"><div></div><div></div><div></div><div></div><div></div></div></div>`, "portrait", "Fiche " + (f.soc || ""));
 }
 function printTour(x) {
   const Rv = rdvsIn(x), P = aPlacer(x);
   const per = fr(x.du) + (x.au && x.au !== x.du ? " au " + fr(x.au) : "");
-  const rdvRows = Rv.map(f => `<tr><td><b>${dow(f.dateRDV)} ${fr(f.dateRDV)}</b><br>${esc(f.heure || "heure ?")}${f.duree ? " · " + esc(f.duree) + " h" : ""}</td>
-    <td><b>${esc(f.soc)}</b><br>${esc(f.contact)}</td><td>${esc(f.tel)}<br>${esc(f.mail)}</td><td>${esc(f.lieu === "Sur site client" || !f.lieu ? f.adr : f.lieu)}</td>
-    <td>${esc(f.objet)}${f.consigne ? "<br><i>" + esc(f.consigne) + "</i>" : ""}</td></tr>`).join("");
-  const pRows = P.map(f => `<tr><td>${esc(prioLbl(f.prio))}</td><td><b>${esc(f.soc)}</b><br>${esc(f.contact)}</td><td>${esc([f.pays, f.zone].filter(Boolean).join(" · "))}</td>
-    <td>${esc(f.tel)}</td><td>${esc(f.etape)}</td><td>${fr(f.relance)}</td><td>${esc(f.objet)}</td></tr>`).join("");
-  doPrint(printHead("Tournée " + x.zone, "S" + isoWeek(x.du) + " · " + per + (x.dispo ? " · " + x.dispo : "") + " · imprimée le " + fr(isoToday())) +
-    (x.consigne ? `<div class="p-sec">Consigne</div><div class="p-hist">${esc(x.consigne)}</div>` : "") +
-    `<div class="p-sec">RDV fixés (${Rv.length})</div>` +
-    (Rv.length ? `<table class="p-table"><colgroup><col style="width:14%"><col style="width:22%"><col style="width:18%"><col style="width:22%"><col style="width:24%"></colgroup><thead><tr><th>Date</th><th>Société / contact</th><th>Téléphone / mail</th><th>Adresse / lieu</th><th>Objet / consigne</th></tr></thead><tbody>${rdvRows}</tbody></table>` : "<p>Aucun RDV fixé sur cette période.</p>") +
-    `<div class="p-sec">Fiches à placer dans la zone (${P.length})</div>` +
-    (P.length ? `<table class="p-table"><colgroup><col style="width:5%"><col style="width:25%"><col style="width:9%"><col style="width:15%"><col style="width:14%"><col style="width:9%"><col style="width:23%"></colgroup><thead><tr><th>Prio</th><th>Société / contact</th><th>Zone</th><th>Téléphone</th><th>Étape</th><th>Relance</th><th>Objet</th></tr></thead><tbody>${pRows}</tbody></table>` : "<p>Aucune fiche à placer.</p>") +
-    `<p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "portrait");
+  const rdvRows = Rv.map(f => `<tr><td class="p-nw"><b>${dow(f.dateRDV)} ${fr(f.dateRDV)}</b><br>${esc(f.heure || "heure ?")}${f.duree ? " · " + esc(f.duree) + " h" : ""}</td>
+    <td><b>${esc(f.soc)}</b><br>${esc(f.contact)}</td><td>${esc(f.tel)}<br><span class="p-mut">${esc(f.mail)}</span></td><td>${esc(f.lieu === "Sur site client" || !f.lieu ? f.adr : f.lieu)}</td>
+    <td>${esc(f.objet)}${f.consigne ? `<br><i>${esc(f.consigne)}</i>` : ""}</td></tr>`).join("");
+  const pRows = P.map(f => `<tr class="${f.flag === true ? "p-flag" : ""}"><td>${pPrio(f.prio)}</td><td><b>${esc(f.soc)}</b><br>${esc(f.contact)}</td><td>${esc([f.pays, f.zone].filter(Boolean).join(" · "))}</td>
+    <td>${esc(f.tel)}</td><td>${esc(f.etape)}</td><td class="p-nw">${fr(f.relance)}</td><td>${esc(f.objet)}</td></tr>`).join("");
+  doPrint(printHead("Tournée " + x.zone, "Semaine " + isoWeek(x.du) + " · " + per, "Feuille de tournée") +
+    `<div class="p-kpis">${pKpi("Période", per)}${pKpi("Disponibilités", x.dispo)}${pKpi("RDV fixés", Rv.length, "ok")}${pKpi("Fiches à placer", P.length, P.length ? "warn" : "")}</div>` +
+    (x.consigne ? pSec("Consigne") + `<div class="p-box">${esc(x.consigne)}</div>` : "") +
+    pSec("RDV fixés", Rv.length) +
+    (Rv.length ? `<table class="p-table"><colgroup><col style="width:14%"><col style="width:22%"><col style="width:18%"><col style="width:22%"><col style="width:24%"></colgroup><thead><tr><th>Date</th><th>Société / contact</th><th>Téléphone / mail</th><th>Adresse / lieu</th><th>Objet / consigne</th></tr></thead><tbody>${rdvRows}</tbody></table>` : `<p class="p-none">Aucun RDV fixé sur cette période.</p>`) +
+    pSec("Fiches à placer dans la zone", P.length) +
+    (P.length ? `<table class="p-table"><colgroup><col style="width:8%"><col style="width:24%"><col style="width:9%"><col style="width:15%"><col style="width:14%"><col style="width:9%"><col style="width:21%"></colgroup><thead><tr><th>Prio</th><th>Société / contact</th><th>Zone</th><th>Téléphone</th><th>Étape</th><th>Relance</th><th>Objet</th></tr></thead><tbody>${pRows}</tbody></table>` : `<p class="p-none">Aucune fiche à placer.</p>`), "portrait", "Tournée " + x.zone);
 }
 function printOffresList() {
-  const L = oFiltered(), F = S.oflt, t = isoToday();
+  const L = oFiltered(), F = S.oflt;
   const ouv = L.filter(o => !oClosed(o)), sum = X => X.reduce((a, o) => a + (+o.montantHT || 0), 0);
   const crit = [F.q && "recherche « " + F.q + " »", F.statut, F.alerte && (F.alerte === "*" ? "avec alerte" : F.alerte), F.resp, F.open === "1" && !F.statut && "commandes, perdues et sans suite masquées"].filter(Boolean);
-  const rows = L.map(o => `<tr><td><b>${esc(o.soc)}</b>${o.contact ? "<br>" + esc(o.contact) : ""}</td><td>${esc(o.num)}<br>${fr(o.dateOffre)}</td>
-    <td>${esc(o.objet)}</td><td style="text-align:right;white-space:nowrap">${eur(o.montantHT)}</td><td>${esc(o.statut)}</td><td>${esc(oAlerte(o))}</td>
-    <td>${fr(o.appel)}</td><td>${fr(o.relance)}</td><td>${fr(o.target)}</td><td>${esc(o.resp)}</td></tr>`).join("");
-  doPrint(printHead("Suivi des offres · liste", "Imprimée le " + fr(t) + " · " + L.length + " offre(s) · " + (eur(sum(ouv)) || "0,00 €") + " HT en cours" + (crit.length ? " · " + crit.join(", ") : "")) +
-    `<table class="p-table"><colgroup><col style="width:15%"><col style="width:9%"><col style="width:22%"><col style="width:9%"><col style="width:11%"><col style="width:9%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:7%"></colgroup><thead><tr><th>Société / contact</th><th>N° / date</th><th>Objet</th><th>Montant HT</th><th>Statut</th><th>Alerte</th><th>Dernier appel</th><th>Relance</th><th>Target</th><th>Resp.</th></tr></thead><tbody>${rows}</tbody></table>` +
-    `<p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "landscape");
+  const nAl = L.filter(o => oAlerte(o)).length;
+  const rows = L.map(o => `<tr><td><b>${esc(o.soc)}</b>${o.contact ? `<br><span class="p-mut">${esc(o.contact)}</span>` : ""}</td><td class="p-nw">${esc(o.num)}<br><span class="p-mut">${fr(o.dateOffre)}</span></td>
+    <td>${esc(o.objet)}</td><td class="p-num">${eur(o.montantHT)}</td><td>${esc(o.statut)}</td><td>${pAl(oAlerte(o))}</td>
+    <td class="p-nw">${fr(o.appel)}</td><td class="p-nw">${fr(o.relance)}</td><td class="p-nw">${fr(o.target)}</td><td>${esc(o.resp)}</td></tr>`).join("");
+  doPrint(printHead("Liste des offres", crit.length ? "Filtres : " + crit.join(", ") : "Toutes les offres", "Suivi des offres") +
+    `<div class="p-kpis">${pKpi("Offres", L.length)}${pKpi("En cours", ouv.length)}${pKpi("Montant HT en cours", eur(sum(ouv)) || "0,00 €", "ok")}${pKpi("Avec alerte", nAl, nAl ? "crit" : "")}</div>` +
+    `<table class="p-table"><colgroup><col style="width:16%"><col style="width:9%"><col style="width:22%"><col style="width:10%"><col style="width:11%"><col style="width:9%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:5%"></colgroup><thead><tr><th>Société / contact</th><th>N° / date</th><th>Objet</th><th class="p-num">Montant HT</th><th>Statut</th><th>Alerte</th><th>Dernier appel</th><th>Relance</th><th>Target</th><th>Resp.</th></tr></thead><tbody>${rows || `<tr><td colspan="10" class="p-none">Aucune offre.</td></tr>`}</tbody>` +
+    (L.length ? `<tfoot><tr><td colspan="3">Total des ${L.length} offre(s) affichée(s)</td><td class="p-num">${eur(sum(L)) || "0,00 €"}</td><td colspan="6"></td></tr></tfoot>` : "") + `</table>`, "landscape", "Liste des offres");
 }
 function printOffre(o) {
-  const kv = (k, v, full) => v === "" || v === null || v === undefined ? "" : `<div class="${full ? "p-full" : ""}"><b>${k}</b><span>${esc(v)}</span></div>`;
+  const kv = pKv, a = oAlerte(o);
   let lignes = []; try { lignes = JSON.parse(o.lignes || "[]"); } catch (e) {}
   const fiche = S.fiches.find(f => String(f.id) === String(o.ficheId));
-  doPrint(printHead(o.soc || "Offre", [o.num && "Offre n° " + o.num, o.dateOffre && "du " + fr(o.dateOffre), "imprimée le " + fr(isoToday()), o.modif && "modifiée le " + o.modif].filter(Boolean).join(" · ")) +
-    `<div class="p-sec">Suivi</div><div class="p-grid">${kv("Statut", o.statut)}${kv("Alerte", oAlerte(o))}${kv("Responsable", o.resp)}${kv("Probabilité", o.proba !== "" ? o.proba + " %" : "")}${kv("Suivi créé le", fr(o.entree))}${kv("Date target", fr(o.target))}${kv("Dernier appel", fr(o.appel))}${kv("Prochaine relance", fr(o.relance))}${kv("Commentaire / motif", o.motif, true)}</div>
-    <div class="p-sec">Offre</div><div class="p-grid">${kv("N° d'offre", o.num)}${kv("Date de l'offre", fr(o.dateOffre))}${kv("Nature", o.nature)}${kv("Validité", fr(o.validite))}${kv("Montant HT", eur(o.montantHT))}${kv("Montant TTC", eur(o.montantTTC))}${kv("Délai", o.delai)}${kv("Livraison", o.livraison)}${kv("Paiement", o.paiement)}${kv("Contact interne MGH", o.contactMgh)}${kv("N° projet", o.projet)}${kv("N° client", o.clientNum)}${kv("Objet", o.objet, true)}${kv("PDF joint", o.pdfNom)}</div>
-    ${lignes.length ? `<table class="p-table"><colgroup><col style="width:14%"><col style="width:56%"><col style="width:10%"><col style="width:20%"></colgroup><thead><tr><th>Article</th><th>Désignation</th><th>Qté</th><th>Total HT</th></tr></thead><tbody>${lignes.map(l => `<tr><td>${esc(l.code)}</td><td>${esc(l.desc)}</td><td>${esc(l.qte)}</td><td style="text-align:right">${eur(l.total)}</td></tr>`).join("")}</tbody></table>` : ""}
-    <div class="p-sec">Client</div><div class="p-grid">${kv("Société", o.soc)}${kv("Contact", o.contact)}${kv("Téléphone", o.tel)}${kv("Mail", o.mail)}${kv("Adresse", o.adr, true)}${kv("Pays / zone", [o.pays, o.zone].filter(Boolean).join(" · "))}${kv("N° TVA", o.tva)}${kv("Fiche RDV liée", fiche ? fiche.soc + (fiche.contact ? " · " + fiche.contact : "") : "")}</div>
-    <div class="p-sec">Historique</div><div class="p-hist">${esc(o.hist) || "Aucun historique."}</div>
-    <p class="p-foot">MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be</p>`, "portrait");
+  doPrint(printHead(o.soc || "Offre", [o.num && "Offre n° " + o.num, o.dateOffre && "du " + fr(o.dateOffre), o.modif && "modifiée le " + o.modif].filter(Boolean).join(" · "), "Suivi d'offre") +
+    `<div class="p-kpis">${pKpi("Statut", o.statut, o.statut === OSTATUTS[3] ? "ok" : o.statut === OSTATUTS[4] ? "crit" : "")}${pKpi("Montant HT", eur(o.montantHT))}${pKpi("Date target", fr(o.target), a === "Target dépassée" ? "crit" : "")}${pKpi("Prochaine relance", fr(o.relance), a === "Relance due" ? "crit" : "")}</div>
+    ${a ? `<div class="p-alert">Alerte : ${esc(a)}</div>` : ""}
+    ${pSec("Suivi")}<div class="p-grid">${kv("Responsable", o.resp)}${kv("Probabilité", o.proba !== "" && o.proba != null ? o.proba + " %" : "")}${kv("Suivi créé le", fr(o.entree))}${kv("Dernier appel", fr(o.appel))}${kv("Commentaire / motif", o.motif, true)}</div>
+    ${pSec("Offre")}<div class="p-grid">${kv("N° d'offre", o.num)}${kv("Date de l'offre", fr(o.dateOffre))}${kv("Nature", o.nature)}${kv("Validité", fr(o.validite))}${kv("Montant TTC", eur(o.montantTTC))}${kv("Délai", o.delai)}${kv("Livraison", o.livraison)}${kv("Paiement", o.paiement)}${kv("Contact interne MGH", o.contactMgh)}${kv("N° projet", o.projet)}${kv("N° client", o.clientNum)}${kv("PDF joint", o.pdfNom)}${kv("Objet", o.objet, true)}</div>
+    ${lignes.length ? `<table class="p-table p-lines"><colgroup><col style="width:14%"><col style="width:56%"><col style="width:10%"><col style="width:20%"></colgroup><thead><tr><th>Article</th><th>Désignation</th><th class="p-num">Qté</th><th class="p-num">Total HT</th></tr></thead><tbody>${lignes.map(l => `<tr><td>${esc(l.code)}</td><td>${esc(l.desc)}</td><td class="p-num">${esc(l.qte)}</td><td class="p-num">${eur(l.total)}</td></tr>`).join("")}</tbody><tfoot><tr><td colspan="3">Total HT</td><td class="p-num">${eur(o.montantHT)}</td></tr></tfoot></table>` : ""}
+    ${pSec("Client")}<div class="p-grid">${kv("Société", o.soc)}${kv("Contact", o.contact)}${kv("Téléphone", o.tel)}${kv("Mail", o.mail)}${kv("Adresse", o.adr, true)}${kv("Pays / zone", [o.pays, o.zone].filter(Boolean).join(" · "))}${kv("N° TVA", o.tva)}${kv("Fiche RDV liée", fiche ? fiche.soc + (fiche.contact ? " · " + fiche.contact : "") : "")}</div>
+    ${pSec("Historique")}${pHist(o.hist)}`, "portrait", "Offre " + [o.num, o.soc].filter(Boolean).join(" "));
 }
 
 /* ---------- Partage (texte, PDF, vCard) ---------- */

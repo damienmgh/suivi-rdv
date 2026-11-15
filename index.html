@@ -408,7 +408,7 @@ const CONFIG = {
   supabaseUrl: "https://qexfitgmhzpgengmbxqk.supabase.co",
   supabaseKey: "sb_publishable_h-VgO27UVILom4l6YFsSdA_wd46MdJf"   // clé publique, protégée par les règles d'accès de la base
 };
-const APP_VERSION = "2026.11.15-1815";
+const APP_VERSION = "2026.11.15-1830";
 const ETAPES = ["1-À contacter","2-Tentative en cours","3-RDV proposé","4-RDV fixé","5-RDV réalisé","6-Recontacter plus tard","7-Refus / hors cible"];
 const ET_COLORS = ["#8F9298","#5468A8","#C77700","#24346C","#2E7D32","#6B6E74","#B71C1C"];
 const LIEUX = ["Sur site client","Atelier Machelen","Atelier Anvers","Teams / visio","Téléphone","Salon / événement"];
@@ -1019,7 +1019,9 @@ function mailTpl(kind, x) {
     b: [salut(x.contact), "", "Nous revenons vers vous concernant notre offre n° " + (x.num || "") + (x.dateOffre ? " du " + fr(x.dateOffre) : "") + (x.objet ? ", relative à : " + x.objet : "") + (eur(x.montantHT) ? ", pour un montant de " + eur(x.montantHT) + " HT" : "") + ".", "", (x.validite ? "Cette offre est valable jusqu'au " + fr(x.validite) + ". " : "") + "Avez-vous pu en prendre connaissance ? Nous restons à votre disposition pour toute question technique, une adaptation du périmètre ou du délai" + (x.delai ? " (délai actuel : " + x.delai + ")" : "") + ".", "", "Dans l'attente de votre retour, nous vous prions d'agréer nos salutations distinguées.", "", sig].join("\n") };
 }
 const MAILNOM = { contact: "après appel sans réponse", demande: "demande de rendez-vous", confirm: "confirmation du RDV", relance: "relance de l'offre" };
-function openMail(to, t) { const p = new URLSearchParams({ to: to || "", subject: t.s, body: t.b }); window.open("https://outlook.office.com/mail/deeplink/compose?" + p.toString(), "_blank", "noopener"); }
+function openMail(to, t) { const p = new URLSearchParams({ to: to || "", subject: t.s, body: t.b }); window.open("https://outlook.office.com/mail/deeplink/compose?" + qs(p), "_blank", "noopener"); }
+// Outlook ne convertit pas les « + » en espaces : les espaces sont codés en %20
+function qs(p) { return p.toString().replace(/\+/g, "%20"); }
 // ---- Interlocuteurs
 const intl = f => (Array.isArray(f && f.interlocuteurs) ? f.interlocuteurs : []).map(x => ({ nom: "", fonction: "", tel: "", mail: "", ...x }));
 function intlBlock(f) {
@@ -1817,7 +1819,7 @@ function outlookUrl(f) {
     location: f.lieu === "Sur site client" || !f.lieu ? (f.adr || f.soc) : f.lieu,
     body: ["Objet : " + (f.objet || ""), "Consigne : " + (f.consigne || ""), "Contact : " + (f.contact || ""), "Tél. : " + (f.tel || ""), "Mail : " + (f.mail || ""), "Adresse : " + (f.adr || ""), "Réf. : " + (f.ref || "")].join("\n") });
   if (!SupaStore.isAdmin()) p.set("to", "damien@mgh.be");
-  return "https://outlook.office.com/calendar/deeplink/compose?" + p.toString();
+  return "https://outlook.office.com/calendar/deeplink/compose?" + qs(p);
 }
 function isoWeek(iso) { const [y,m,d] = iso.split("-").map(Number); const x = new Date(Date.UTC(y,m-1,d)); const n = x.getUTCDay() || 7; x.setUTCDate(x.getUTCDate() + 4 - n); const y0 = new Date(Date.UTC(x.getUTCFullYear(),0,1)); return Math.ceil(((x - y0) / 86400000 + 1) / 7); }
 

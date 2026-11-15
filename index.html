@@ -194,8 +194,8 @@ fieldset>legend.lbl{width:100%;font-size:13px;color:var(--accent);border-bottom:
   .plate img{height:28px}
   .who{gap:6px;flex:none}.who .lbl{display:none}.who .seg button{padding:4px 7px;font-size:12px}
   .mode{font-size:10.5px;padding:2px 5px;white-space:nowrap}
-  nav.tabs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;overflow:visible}
-  nav.tabs button{padding:7px 0;font-size:12.5px;text-align:center;overflow:hidden;text-overflow:ellipsis}
+  nav.tabs{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:0;overflow:visible}
+  nav.tabs button{padding:7px 0;font-size:11.5px;text-align:center;overflow:hidden;text-overflow:ellipsis}
   main{padding-block:12px 32px}
   .panel{padding:12px}
   .f-toggle{display:inline-flex}.f-toggle.on{border-color:var(--accent);color:var(--accent)}
@@ -212,6 +212,17 @@ fieldset>legend.lbl{width:100%;font-size:13px;color:var(--accent);border-bottom:
   input,select,textarea{font-size:16px!important}
   .share-box{padding:14px}
 }
+
+/* RDV récurrents */
+.rbar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;min-width:56px;margin-top:4px}
+.rbar i{display:block;height:100%;background:var(--accent)}.rbar.full i{background:var(--ok)}
+.rnum{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.tot td{font-weight:700;background:var(--surface-2);border-top:2px solid var(--accent)}
+.kpis.k5{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media (max-width:700px){.kpis.k5{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.rv-list{display:grid;gap:4px}.rv-list>div{display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:3px;padding:5px 8px;background:var(--field)}
+.rcount{display:flex;gap:14px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:3px;padding:10px 12px;background:var(--surface-2)}
+.rcount b{font-family:var(--f-cond);font-size:26px;color:var(--ink)}
 
 /* Tournées, mise en service */
 .form-inline{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;align-items:end}
@@ -369,6 +380,7 @@ tr.flag>td{background:var(--warn-soft)}tr.flag>td:first-child{box-shadow:inset 4
     <nav class="tabs" role="tablist" aria-label="Vues">
       <button role="tab" data-view="dash" id="tab-dash"><span class="t-long">Tableau de bord</span><span class="t-short">Accueil</span></button>
       <button role="tab" data-view="fiches" id="tab-fiches">Fiches</button>
+      <button role="tab" data-view="recurrents" id="tab-recurrents"><span class="t-long">RDV récurrents</span><span class="t-short">Récurr.</span></button>
       <button role="tab" data-view="offres" id="tab-offres">Offres</button>
       <button role="tab" data-view="agenda" id="tab-agenda">Agenda</button>
       <button role="tab" data-view="carnet" id="tab-carnet">Carnet</button>
@@ -393,7 +405,7 @@ const CONFIG = {
   supabaseUrl: "https://qexfitgmhzpgengmbxqk.supabase.co",
   supabaseKey: "sb_publishable_h-VgO27UVILom4l6YFsSdA_wd46MdJf"   // clé publique, protégée par les règles d'accès de la base
 };
-const APP_VERSION = "2026.11.11-1400";
+const APP_VERSION = "2026.11.15-1300";
 const ETAPES = ["1-À contacter","2-Tentative en cours","3-RDV proposé","4-RDV fixé","5-RDV réalisé","6-Recontacter plus tard","7-Refus / hors cible"];
 const ET_COLORS = ["#8F9298","#5468A8","#C77700","#24346C","#2E7D32","#6B6E74","#B71C1C"];
 const LIEUX = ["Sur site client","Atelier Machelen","Atelier Anvers","Teams / visio","Téléphone","Salon / événement"];
@@ -513,6 +525,8 @@ const CCOLS = { prenom:"prenom", nom:"nom", societe:"societe", fonction:"fonctio
   adresse:"adresse", cp:"cp", ville:"ville", pays:"pays", notes:"notes", groupes:"groupes", source:"source" };
 const PCOLS = { ficheId:"fiche_id", nom:"nom", path:"path", taille:"taille", type:"type", createdAt:"created_at", createdBy:"created_by" };
 const BOOLS = ["flag"];
+const RCOLS = { code:"code", client:"client", site:"site", adresse:"adresse", cible:"visites_cible", contact:"contact", fonction:"fonction", tel:"tel", mail:"mail",
+  dateRDV:"date_rdv", heure:"heure", duree:"duree", lieu:"lieu", objet:"objet", visites:"visites", bilan:"bilan", verrous:"verrous", hist:"hist", source:"source", cree:"created_at" };
 const TCOLS = { du:"du", au:"au", zone:"zone", dispo:"dispo", consigne:"consigne" };
 const OCOLS = { num:"num", dateOffre:"date_offre", clientNum:"client_num", projet:"projet", soc:"soc", contact:"contact", tel:"tel", mail:"mail",
   adr:"adr", pays:"pays", zone:"zone", tva:"tva", nature:"nature", objet:"objet", lignes:"lignes", montantHT:"montant_ht", montantTTC:"montant_ttc",
@@ -566,7 +580,9 @@ const SupaStore = {
     this.ficheCols = a.length ? new Set(Object.keys(a[0])) : null; this.hasFlag = this.hasCol("flag");
     try { contacts = (await this.all("contacts")).map(r => this.fromDb(r, CCOLS)); } catch (e) { contactsKo = e.message; }
     try { pieces = (await this.all("pieces")).map(r => this.fromDb(r, PCOLS)); } catch (e) { piecesKo = e.message; }
-    return { fiches: a.map(r => this.fromDb(r, COLS)), tournees: b.map(r => this.fromDb(r, TCOLS)), offres, offresKo, contacts, pieces, contactsKo, piecesKo, needsLogin: false, notMember: false,
+    let recurrents = [], recurrentsKo = "";
+    try { recurrents = (await this.all("recurrents")).map(rFromDb); } catch (e) { recurrentsKo = e.message; }
+    return { fiches: a.map(r => this.fromDb(r, COLS)), tournees: b.map(r => this.fromDb(r, TCOLS)), offres, offresKo, contacts, pieces, contactsKo, piecesKo, recurrents, recurrentsKo, needsLogin: false, notMember: false,
       access: role === "lecture" ? "lecture" : "editeur" };
   },
   async upsert(table, map, o) {
@@ -640,6 +656,28 @@ const SupaStore = {
     const { error } = await this.client().from("contacts").delete().eq("id", id); if (error) throw new Error(error.message);
     state.contacts = state.contacts.filter(x => String(x.id) !== String(id));
   },
+  async saveRec(r, state) {
+    const row = rToDb(r), q = r.id ? this.client().from("recurrents").update(row).eq("id", r.id) : this.client().from("recurrents").insert(row);
+    const { data, error } = await q.select().single(); if (error) throw new Error(error.message);
+    const saved = rFromDb(data), i = state.recurrents.findIndex(x => String(x.id) === String(saved.id));
+    if (i >= 0) state.recurrents[i] = saved; else state.recurrents.push(saved);
+    return saved;
+  },
+  async deleteRec(id, state) {
+    const { error } = await this.client().from("recurrents").delete().eq("id", id); if (error) throw new Error(error.message);
+    state.recurrents = state.recurrents.filter(x => String(x.id) !== String(id));
+  },
+  async importRecs(rows, log) {
+    let n = 0; const col = r => ({ code: r.code || null, client: r.client || null, site: r.site || null, adresse: r.adresse || null, visites_cible: +r.cible || 0 });
+    for (let i = 0; i < rows.length; i += 200) {
+      const chunk = rows.slice(i, i + 200);
+      const news = chunk.filter(r => !r.id).map(r => ({ ...col(r), source: "Import" })), olds = chunk.filter(r => r.id).map(r => ({ id: r.id, ...col(r) }));
+      if (news.length) { const { error } = await this.client().from("recurrents").insert(news); if (error) throw new Error(error.message); }
+      if (olds.length) { const { error } = await this.client().from("recurrents").upsert(olds); if (error) throw new Error(error.message); }
+      n += chunk.length; log(n + " / " + rows.length);
+    }
+  },
+  async patchRecs(rows) { for (let i = 0; i < rows.length; i += 200) { const { error } = await this.client().from("recurrents").upsert(rows.slice(i, i + 200)); if (error) throw new Error(error.message); } },
   async importContacts(rows, log) {
     let n = 0;
     for (let i = 0; i < rows.length; i += 200) {
@@ -704,18 +742,19 @@ const SupaStore = {
       .on("postgres_changes", { event: "*", schema: "public", table: "tournees" }, p => onChange("tournees", p))
       .on("postgres_changes", { event: "*", schema: "public", table: "offres" }, p => onChange("offres", p))
       .on("postgres_changes", { event: "*", schema: "public", table: "contacts" }, p => onChange("contacts", p))
+      .on("postgres_changes", { event: "*", schema: "public", table: "recurrents" }, p => onChange("recurrents", p))
       .on("postgres_changes", { event: "*", schema: "public", table: "pieces" }, p => onChange("pieces", p)).subscribe();
   }
 };
 const Store = CONFIG.mode === "supabase" ? SupaStore : DemoStore;
 
 /* ===================== État de l'interface ===================== */
-const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], offres: [], contacts: [], pieces: [], csel: null, cdraft: null, cq: "", pick: false, pickQ: "", osel: null, odraft: null, opendingFile: null,
+const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], offres: [], contacts: [], pieces: [], recurrents: [], rsel: null, rdraft: null, rflt: { q: "", etat: "", hide: true }, csel: null, cdraft: null, cq: "", pick: false, pickQ: "", osel: null, odraft: null, opendingFile: null,
   oflt: { q: "", statut: "", alerte: "", resp: "", open: "1" }, osort: ["relance", 1], view: "dash", role: "DM", sel: null, draft: null,
   flt: { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1", flag: "", zones: [] }, sort: ["relance", 1] };
 try { const p = JSON.parse(localStorage.getItem("mgh-suivi-rdv-ui") || "{}"); if (p.role) S.role = p.role; if (p.flt) Object.assign(S.flt, p.flt); } catch (e) {}
 if (!Array.isArray(S.flt.zones)) S.flt.zones = [];
-try { S.agMode = localStorage.getItem("mgh-ag-mode") || "mois"; S.fmode = localStorage.getItem("mgh-fmode") || "liste"; S.cHide = localStorage.getItem("mgh-c-hide") === "1"; } catch (e) {}
+try { S.agMode = localStorage.getItem("mgh-ag-mode") || "mois"; S.fmode = localStorage.getItem("mgh-fmode") || "liste"; S.cHide = localStorage.getItem("mgh-c-hide") === "1"; S.rflt.hide = localStorage.getItem("mgh-r-hide") !== "0"; } catch (e) {}
 const saveUi = () => { try { localStorage.setItem("mgh-suivi-rdv-ui", JSON.stringify({ role: S.role, flt: S.flt })); } catch (e) {} };
 const $app = document.getElementById("app");
 function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 2200); }
@@ -753,6 +792,7 @@ function viewDash() {
       <div class="alerts">${al.map(([a,c,n]) => `<button class="chip ${c} ${n ? "" : "zero"}" data-goto-alerte="${esc(a)}"><b class="num">${n}</b>${esc(a)}</button>`).join("")}</div>
     </section>
     ${dashOffres()}
+    ${recDash()}
     <section class="panel span-7" aria-labelledby="h-ag">
       <h2><span class="lbl" id="h-ag">Agenda · RDV fixés à venir</span><button class="btn ghost small" data-view-go="agenda">Ouvrir l'agenda</button></h2>
       <div class="rows">${agenda.length ? agenda.map(f => `
@@ -1471,8 +1511,212 @@ function contactsCsv() {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
   a.download = "Carnet_adresses_" + isoToday() + ".csv"; document.body.appendChild(a); a.click(); a.remove();
 }
+
+/* ===================== RDV récurrents ===================== */
+const XLSXJS = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+function loadXlsx() { if (window.XLSX) return Promise.resolve(window.XLSX); return loadXlsx.p || (loadXlsx.p = new Promise((ok, ko) => {
+  const s = document.createElement("script"); s.src = XLSXJS; s.onload = () => ok(window.XLSX); s.onerror = () => { loadXlsx.p = null; ko(new Error("chargement du module Excel impossible (connexion internet ?)")); }; document.head.appendChild(s); })); }
+function rFromDb(r) { const o = SupaStore.fromDb(r, RCOLS); o.cible = +o.cible || 0; o.visites = Array.isArray(r.visites) ? r.visites : []; o.bilan = r.bilan && typeof r.bilan === "object" && !Array.isArray(r.bilan) ? r.bilan : {};
+  o.verrous = Array.isArray(r.verrous) ? r.verrous : []; o.heure = String(o.heure || "").slice(0, 5); return o; }
+function rToDb(o) { const t = v => String(v ?? "").trim() || null;
+  return { code: t(o.code), client: t(o.client), site: t(o.site), adresse: t(o.adresse), visites_cible: Math.max(0, Math.round(+o.cible || 0)), contact: t(o.contact), fonction: t(o.fonction), tel: t(o.tel), mail: t(o.mail),
+    date_rdv: o.dateRDV || null, heure: o.heure || null, duree: o.duree === "" || o.duree == null || isNaN(+o.duree) ? null : +o.duree, lieu: t(o.lieu), objet: t(o.objet),
+    visites: o.visites || [], bilan: o.bilan || {}, verrous: o.verrous || [], hist: o.hist || "", source: o.source || "Saisie" }; }
+const rYear = () => isoToday().slice(0, 4);
+const rDone = (r, y) => (r.visites || []).filter(v => String(v.d || "").startsWith(y || rYear())).length;
+const rReste = r => Math.max(0, (+r.cible || 0) - rDone(r));
+const rNorm = v => String(v ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+const rKey = (code, site) => rNorm(code) + "|" + rNorm(site);
+const rSame = r => normSoc(r.site) === normSoc(r.client) || !normSoc(r.site);
+const rLabel = r => r.client || r.site || "(sans nom)";
+const rEtat = r => r.dateRDV ? "RDV fixé" : (+r.cible || 0) === 0 ? "Sans cible" : rReste(r) === 0 ? "Objectif atteint" : "À planifier";
+const RETATS = ["À planifier", "RDV fixé", "Objectif atteint", "Sans cible"];
+function recFiche(r) { return { id: "r" + r.id, rec: true, soc: rLabel(r) + (r.site && !rSame(r) ? " · " + r.site : ""), contact: r.contact, tel: r.tel, mail: r.mail, adr: r.adresse,
+  dateRDV: r.dateRDV, heure: r.heure, duree: r.duree, lieu: r.lieu, objet: r.objet || "Visite récurrente", consigne: "", ref: r.code, pays: "", zone: "", etape: ETAPES[3] }; }
+function recAgenda() { const out = []; (S.recurrents || []).forEach(r => { const f = recFiche(r); f.soc = "↻ " + f.soc;
+  if (r.dateRDV) out.push(f);
+  (r.visites || []).forEach(v => { if (v.d) out.push({ ...f, dateRDV: v.d, heure: v.h || "", duree: v.du || "", etape: ETAPES[4] }); }); }); return out; }
+function rFiltered() { const q = rNorm(S.rflt.q).split(" ").filter(Boolean);
+  return (S.recurrents || []).filter(r => { if (S.rflt.hide && !(+r.cible || 0) && !rDone(r) && !r.dateRDV) return false;
+    if (S.rflt.etat && rEtat(r) !== S.rflt.etat) return false;
+    if (q.length) { const t = rNorm([r.client, r.site, r.code, r.adresse, r.contact].join(" ")); if (!q.every(w => t.includes(w))) return false; }
+    return true; }).sort((a, b) => (+b.cible || 0) - (+a.cible || 0) || rLabel(a).localeCompare(rLabel(b)) || String(a.site || "").localeCompare(String(b.site || "")));
+}
+function rTotals(L) { const c = L.reduce((n, r) => n + (+r.cible || 0), 0), d = L.reduce((n, r) => n + rDone(r), 0), reste = L.reduce((n, r) => n + rReste(r), 0);
+  return { n: L.length, c, d, reste, pct: c ? Math.round(Math.min(d, c) / c * 100) : 0, rdv: L.filter(r => r.dateRDV).length }; }
+function rBar(r) { const c = +r.cible || 0, d = rDone(r); return c ? `<div class="rbar ${d >= c ? "full" : ""}"><i style="width:${Math.min(100, Math.round(d / c * 100))}%"></i></div>` : ""; }
+function recDash() {
+  if (S.recurrentsKo || !(S.recurrents || []).length) return "";
+  const T = rTotals(S.recurrents.filter(r => (+r.cible || 0) > 0 || rDone(r) > 0));
+  return `<section class="panel span-12"><h2><span class="lbl">RDV récurrents ${rYear()}</span><button class="btn small ghost" data-go-rec="1">Ouvrir</button></h2>
+    <div class="kpis"><button class="kpi" data-go-rec="1"><b class="num">${T.c}</b>Visites cible</button><button class="kpi" data-go-rec="1"><b class="num">${T.d}</b>Visites réalisées</button>
+      <button class="kpi" data-go-rec="1"><b class="num">${T.reste}</b>Reste à réaliser</button><button class="kpi" data-go-rec="1"><b class="num">${T.pct} %</b>Avancement</button></div></section>`;
+}
+function viewRecurrents() {
+  if (S.recurrentsKo) return `<div class="panel"><b>L'onglet RDV récurrents n'est pas encore activé dans la base.</b><p class="demo-note">Détail : ${esc(S.recurrentsKo)}</p></div>`;
+  const all = S.recurrents || [], L = rFiltered(), T = rTotals(L), imp = S.rimport, y = rYear(), nz = all.filter(r => !(+r.cible || 0) && !rDone(r) && !r.dateRDV).length;
+  const rdv = r => r.dateRDV ? `<span class="num">${fr(r.dateRDV)}${r.heure ? " " + esc(r.heure) : ""}</span>` : "";
+  return `<div class="split ${S.rsel ? "open" : ""}"><div style="min-width:0">
+    <div class="drop w"><span style="flex:1 1 300px">Import Excel au format <b>data_recur</b> (colonnes Naam zakenpartner, Adres-ID, Straat, Plaats, Postcode, Aant bez/jaar). Un nouvel import met à jour clients, adresses et visites cible ; les contacts, RDV, visites réalisées, notes et valeurs modifiées à la main sont conservés.</span>
+      <label class="btn small primary filebtn">Importer un fichier Excel<input type="file" id="r-import" accept=".xlsx,.xls,.csv"></label>
+      <button class="btn small" id="rnew">+ Nouveau client</button></div>
+    ${imp ? `<div class="panel" style="margin-bottom:12px;border-color:var(--accent)"><b>${esc(imp.file)}</b> : ${imp.total} ligne(s) lue(s), <b>${imp.neuf}</b> nouveau(x) client(s), <b>${imp.maj}</b> mis à jour, ${imp.inch} inchangé(s)${imp.dbl ? ", " + imp.dbl + " doublon(s) ignoré(s)" : ""}${imp.manuels ? ", " + imp.manuels + " client(s) saisi(s) à la main conservé(s)" : ""}${imp.proteges ? ", " + imp.proteges + " valeur(s) modifiée(s) à la main conservée(s)" : ""}. Visites cible du fichier : <b>${imp.cible}</b>.${imp.absents ? ` ${imp.absents} client(s) déjà présent(s) ne figurent pas dans ce fichier : ils sont conservés.` : ""}
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">${imp.rows.length ? `<button class="btn small primary" id="rimp-ok" ${imp.busy ? "disabled" : ""}>${imp.busy ? "Import en cours… " + esc(imp.prog || "") : "Importer " + imp.rows.length + " ligne(s)"}</button>` : `<span>Rien à importer : la liste est déjà à jour.</span>`}<button class="btn small" id="rimp-no" ${imp.busy ? "disabled" : ""}>Annuler</button></div></div>` : ""}
+    <div class="kpis k5"><div class="kpi"><b class="num">${T.n}</b>Clients affichés</div><div class="kpi"><b class="num" id="r-tot-cible">${T.c}</b>Visites cible ${y}</div><div class="kpi"><b class="num" id="r-tot-done">${T.d}</b>Visites réalisées ${y}</div>
+      <div class="kpi"><b class="num">${T.reste}</b>Reste à réaliser</div><div class="kpi"><b class="num">${T.pct} %</b>Avancement · ${T.rdv} RDV fixé(s)</div></div>
+    <div class="filters">
+      <input type="search" id="rq" placeholder="Rechercher client, site, adresse, contact…" value="${esc(S.rflt.q)}" aria-label="Rechercher un client récurrent">
+      <select id="rf-etat" aria-label="État">${opts(RETATS, S.rflt.etat, "Tous les états")}</select>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="r-hide" ${S.rflt.hide ? "checked" : ""}> Masquer les clients sans visite cible (${nz})</label>
+      <button class="btn small" id="rexport">Exporter (CSV)</button>
+      <span class="count num">${L.length} / ${all.length} client(s)</span>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Clients</th><th>Adresse</th><th>Contact</th><th style="text-align:right">Nbre de visites cible</th><th style="text-align:right">Réalisées ${y}</th><th style="text-align:right">Reste</th><th>Prochain RDV</th></tr></thead>
+      <tbody>${L.slice(0, 500).map(r => `<tr data-ropen="${esc(r.id)}" class="${String(S.rsel) === String(r.id) ? "sel" : ""}">
+        <td class="soc">${esc(rLabel(r))}${r.site && !rSame(r) ? `<small style="display:block;font-weight:500;color:var(--muted)">${esc(r.site)}</small>` : ""}</td><td>${esc(r.adresse)}</td><td>${esc(r.contact)}</td>
+        <td class="rnum" style="text-align:right">${+r.cible || 0}</td><td class="rnum" style="text-align:right">${rDone(r)}${rBar(r)}</td><td class="rnum" style="text-align:right;${rReste(r) ? "color:var(--warn)" : ""}">${rReste(r)}</td><td>${rdv(r)}</td></tr>`).join("")
+        || `<tr><td colspan="7" class="empty">${all.length ? "Aucun client trouvé avec ces filtres." : "Liste vide : importez le fichier Excel ou ajoutez un client."}</td></tr>`}
+        ${L.length ? `<tr class="tot"><td colspan="3">Total (${T.n} client(s))</td><td class="rnum" style="text-align:right">${T.c}</td><td class="rnum" style="text-align:right">${T.d}</td><td class="rnum" style="text-align:right">${T.reste}</td><td>${T.rdv} RDV fixé(s)</td></tr>` : ""}</tbody>
+    </table></div>
+    <div class="cards">${L.slice(0, 150).map(r => `<button class="card" data-ropen="${esc(r.id)}"><span class="top-l"><span class="soc">${esc(rLabel(r))}</span><span class="rnum">${rDone(r)} / ${+r.cible || 0}</span></span>
+      <span class="meta"><span>${esc(r.site && !rSame(r) ? r.site : r.adresse)}</span>${r.dateRDV ? `<span>RDV ${fr(r.dateRDV)}${r.heure ? " " + esc(r.heure) : ""}</span>` : ""}</span>${rBar(r)}</button>`).join("")}</div>
+    ${L.length > 500 ? `<p class="empty">500 premiers clients affichés : affinez la recherche.</p>` : ""}
+  </div>${S.rsel ? rSheet() : ""}</div>`;
+}
+function rSheet() {
+  const r = S.rdraft; if (!r) return ""; const y = rYear(), d = rDone(r), c = +r.cible || 0;
+  const inp = (k, lab, type = "text", cls = "", extra = "") => `<div class="f ${cls}"><label for="r-${k}">${lab}</label><input id="r-${k}" data-rk="${k}" type="${type}" value="${esc(r[k])}" ${extra}></div>`;
+  const vis = (r.visites || []).map((v, i) => ({ ...v, i })).sort((a, b) => String(b.d).localeCompare(String(a.d)));
+  const years = [...new Set(Object.keys(r.bilan || {}).concat((r.visites || []).map(v => String(v.d || "").slice(0, 4))).filter(x => x && x !== y))].sort().reverse();
+  const q = S.rpickQ || "", P = S.rpick ? S.contacts.filter(x => contactMatch(x, q)).sort((a, b) => cname(a).localeCompare(cname(b))).slice(0, 30) : [];
+  const locks = { client: "client", adresse: "adresse", cible: "visites cible" };
+  return `<aside class="sheet" aria-label="Client récurrent">
+    <div class="sheet-h"><div><h3>${esc(rLabel(r) === "(sans nom)" ? "Nouveau client" : rLabel(r))}</h3><small>${esc([r.site && !rSame(r) ? r.site : "", r.code, r.source === "Saisie" ? "ajouté à la main" : ""].filter(Boolean).join(" · "))}</small></div>
+      <button class="btn small" id="rclose">Fermer</button></div>
+    <div class="sheet-b">
+      <div class="rcount"><span><b class="num">${d} / ${c}</b></span><span>visite(s) réalisée(s) en ${y}${c ? " · reste " + Math.max(0, c - d) : ""}${rBar(r)}</span></div>
+      <div><div class="lbl" style="margin-bottom:6px">Actions rapides</div><div class="quick">
+        <button class="btn small" data-rq="done" type="button">RDV réalisé</button><button class="btn small" data-rq="cancel" type="button">RDV annulé</button></div></div>
+      <fieldset><legend class="lbl">Client</legend>
+        ${inp("client","Client","text","full")}${inp("site","Site / adresse de visite","text","full")}${inp("adresse","Adresse","text","full")}${inp("code","Code client")}
+        ${inp("cible","Nbre de visites cible (par an)","number","",'min="0" step="1"')}
+        ${(r.verrous || []).length ? `<div class="f full"><small style="color:var(--muted)">Modifié à la main, non remplacé par l'import : ${esc(r.verrous.map(k => locks[k] || k).join(", "))}. <button class="btn small ghost w" id="r-unlock" type="button">Reprendre les valeurs de l'Excel au prochain import</button></small></div>` : ""}
+      </fieldset>
+      <fieldset><legend class="lbl">Personne de contact</legend>
+        <div class="f full"><div class="adr-row">${inp("contact","Contact")}<button class="btn small w" id="rpick-open" type="button" aria-expanded="${!!S.rpick}">Choisir dans le carnet</button></div></div>
+        ${S.rpick ? `<div class="f full"><div class="picker" id="rpicker"><input type="search" id="rpick-q" placeholder="Rechercher un nom, une société, un mail…" value="${esc(q)}" aria-label="Rechercher dans le carnet">
+          <div class="rows">${S.contactsKo ? `<p class="empty">Carnet d'adresses indisponible.</p>` : P.map(x => `<button class="row ct-row" data-rpick="${esc(x.id)}" type="button"><span style="min-width:0"><span class="r-soc">${esc(cname(x) || x.societe || x.email)}</span><span class="r-sub">${esc([x.fonction, x.societe, x.mobile || x.tel, x.email].filter(Boolean).join(" · "))}</span></span><span class="btn small">Choisir</span></button>`).join("") || `<p class="empty">${S.contacts.length ? "Aucun contact trouvé." : "Le carnet est vide : importez vos contacts dans l'onglet Carnet."}</p>`}</div></div></div>` : ""}
+        ${inp("fonction","Fonction")}${inp("tel","Téléphone","tel")}${inp("mail","Mail","email","full")}
+      </fieldset>
+      <fieldset><legend class="lbl">Prochain rendez-vous</legend>
+        ${inp("dateRDV","Date","date")}${inp("heure","Heure","time")}${inp("duree","Durée (h)","number","",'min="0" step="0.5"')}
+        <div class="f"><label for="r-lieu">Lieu / format</label><select id="r-lieu" data-rk="lieu">${opts(LIEUX, r.lieu, "…")}</select></div>
+        ${inp("objet","Objet du RDV","text","full")}
+        <div class="f full" style="display:flex;gap:8px;flex-wrap:wrap;flex-direction:row"><button class="btn small primary" data-rq="outlook" type="button">Créer le RDV dans Outlook</button><button class="btn small" data-rq="ics" type="button">Fichier .ics (Outlook bureau)</button></div>
+      </fieldset>
+      <div><div class="lbl" style="margin-bottom:6px">Visites réalisées (${(r.visites || []).length})</div>
+        <div class="rv-list">${vis.map(v => `<div><span class="num"><b>${fr(v.d)}</b>${v.h ? " " + esc(v.h) : ""}</span><button class="btn small ghost w" data-rv-del="${v.i}" type="button" aria-label="Retirer la visite du ${fr(v.d)}">Retirer</button></div>`).join("") || `<p class="empty" style="padding:0">Aucune visite enregistrée.</p>`}</div>
+        <div class="note-row" style="margin-top:6px"><input type="date" id="rv-date" value="${isoToday()}" aria-label="Date de la visite"><button class="btn small" id="rv-add" type="button">Ajouter une visite réalisée</button></div></div>
+      ${years.length ? `<div><div class="lbl" style="margin-bottom:6px">Bilan des années précédentes</div><div class="rows">${years.map(a => `<div class="row" style="grid-template-columns:80px minmax(0,1fr);cursor:default"><span class="r-date num">${esc(a)}</span><span>${rDone(r, a)} visite(s) réalisée(s)${(r.bilan[a] || {}).c !== undefined ? " sur " + esc((r.bilan[a] || {}).c) + " visées" : ""}</span></div>`).join("")}</div></div>` : ""}
+      <div><div class="lbl" style="margin-bottom:6px">Historique</div>
+        <div class="note-row"><input id="rnote" placeholder="Ajouter une note datée" aria-label="Nouvelle note"><button class="btn small" id="rnote-add" type="button">Ajouter</button></div>
+        <div class="hist" style="margin-top:6px">${histHtml(r.hist)}</div></div>
+    </div>
+    <div class="sheet-f"><span class="stamp">${r.modif ? "Modifié le " + esc(r.modif) : r.id ? "" : "Non enregistré"}</span>
+      <span style="display:flex;gap:8px;flex-wrap:wrap">${r.id ? (S.confirmRDel === r.id ? `<button class="btn small w" id="rdel-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="rdel-no">Garder</button>` : `<button class="btn small ghost w" id="rdel" style="color:var(--crit)">Supprimer</button>`) : ""}<button class="btn small" id="rcancel">Annuler</button><button class="btn primary small w" id="rsave">Enregistrer</button></span></div>
+  </aside>`;
+}
+function readRDraft() { if (!S.rdraft) return; document.querySelectorAll("[data-rk]").forEach(el => { S.rdraft[el.dataset.rk] = el.value; }); }
+function openRec(id, fromAgenda) { const r = (S.recurrents || []).find(x => String(x.id) === String(id)); if (!r) return;
+  S.sel = null; S.draft = null; S.rsel = r.id; S.rdraft = JSON.parse(JSON.stringify(r)); S.rpick = false; S.rpickQ = ""; S.confirmRDel = null; S.rback = fromAgenda ? "agenda" : null; S.view = "recurrents"; render(); }
+function rNote(txt, type) { const d = S.rdraft; d.hist = noteLine(txt, type) + (d.hist ? "\n" + d.hist : ""); }
+async function saveRec(silent) {
+  const r = S.rdraft; if (!String(r.client || r.site || "").trim()) { toast("Indiquez le nom du client"); return false; }
+  const old = (S.recurrents || []).find(x => String(x.id) === String(r.id)), y = rYear();
+  r.cible = Math.max(0, Math.round(+r.cible || 0));
+  if (old && r.source !== "Saisie") { const v = new Set(r.verrous || []); if (String(old.client || "") !== String(r.client || "")) v.add("client"); if (String(old.adresse || "") !== String(r.adresse || "")) v.add("adresse"); if ((+old.cible || 0) !== r.cible) v.add("cible"); r.verrous = [...v]; }
+  if (old && old.dateRDV !== r.dateRDV && r.dateRDV) rNote("RDV fixé le " + fr(r.dateRDV) + (r.heure ? " à " + r.heure : ""), "RDV");
+  r.bilan = { ...(r.bilan || {}), [y]: { c: r.cible, r: rDone(r, y) } };
+  try { const saved = await SupaStore.saveRec({ ...r }, S); S.rsel = saved.id; S.rdraft = JSON.parse(JSON.stringify(saved)); if (!silent) toast("Client enregistré"); render(); return true; }
+  catch (err) { toast("Enregistrement impossible : " + err.message); return false; }
+}
+async function readRecFile(file) {
+  const X = await loadXlsx(), wb = X.read(await file.arrayBuffer(), { type: "array" }), A = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: true });
+  const hi = A.slice(0, 15).findIndex(row => row.some(c => /naam zakenpartner/.test(rNorm(c)))); if (hi < 0) throw new Error("colonne « Naam zakenpartner » introuvable : le fichier n'est pas au format data_recur");
+  const H = A[hi].map(rNorm), col = f => H.findIndex(f);
+  const ix = { code: col(h => /^code zakenpartner/.test(h)), client: col(h => /^naam zakenpartner/.test(h)), site: col(h => h === "adres-id"), cible: col(h => /aant bez|visits\/an|visites\/an/.test(h)), rue: col(h => /^straat/.test(h)), ville: col(h => /^plaats/.test(h)), cp: col(h => /^postcode/.test(h)) };
+  if (ix.cible < 0) throw new Error("colonne « Aant bez/jaar - Nbre visits/an » introuvable");
+  const g = (row, i) => i < 0 ? "" : String(row[i] ?? "").replace(/\s+/g, " ").trim();
+  return A.slice(hi + 1).map(row => { const site = g(row, ix.site), client = g(row, ix.client) || site; if (!client) return null;
+    return { code: g(row, ix.code), client, site, adresse: [g(row, ix.rue), [g(row, ix.cp), g(row, ix.ville)].filter(Boolean).join(" ")].filter(Boolean).join(", "), cible: Math.max(0, Math.round(+row[ix.cible] || 0)) }; }).filter(Boolean);
+}
+function prepareRecImport(list) {
+  const ex = new Map(); (S.recurrents || []).forEach(r => { const k = rKey(r.code, r.site || r.client); if (!ex.has(k)) ex.set(k, r); });
+  const seen = new Set(), rows = []; let neuf = 0, maj = 0, inch = 0, dbl = 0, manuels = 0, proteges = 0;
+  list.forEach(x => { const k = rKey(x.code, x.site || x.client); if (seen.has(k)) { dbl++; return; } seen.add(k);
+    const o = ex.get(k); if (!o) { rows.push(x); neuf++; return; }
+    if (o.source === "Saisie") { manuels++; return; }
+    const n = { id: o.id, code: x.code, site: x.site, client: x.client, adresse: x.adresse, cible: x.cible };
+    ["client", "adresse", "cible"].forEach(f => { if ((o.verrous || []).includes(f)) { if (String(o[f] ?? "") !== String(x[f] ?? "")) proteges++; n[f] = o[f]; } });
+    if (["code", "site", "client", "adresse"].every(f => String(o[f] || "") === String(n[f] || "")) && (+o.cible || 0) === (+n.cible || 0)) { inch++; return; }
+    rows.push(n); maj++; });
+  const absents = (S.recurrents || []).filter(r => r.source !== "Saisie" && !seen.has(rKey(r.code, r.site || r.client))).length;
+  return { total: list.length, neuf, maj, inch, dbl, manuels, proteges, absents, rows, cible: list.reduce((n, x) => n + x.cible, 0) };
+}
+function recCsv() {
+  const y = rYear(), q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"', L = rFiltered();
+  const lines = [["Client","Site","Code","Adresse","Contact","Téléphone","Mail","Visites cible","Réalisées " + y,"Reste","Prochain RDV","Heure"].map(q).join(";")]
+    .concat(L.map(r => [rLabel(r), r.site, r.code, r.adresse, r.contact, r.tel, r.mail, +r.cible || 0, rDone(r), rReste(r), r.dateRDV ? fr(r.dateRDV) : "", r.heure].map(q).join(";")));
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
+  a.download = "RDV_recurrents_" + isoToday() + ".csv"; document.body.appendChild(a); a.click(); a.remove();
+}
+// Au premier passage de Damien dans une nouvelle année : fige le bilan de l'année écoulée (cible et visites réalisées)
+async function recCloture() {
+  if (!SupaStore.isAdmin() || S.access === "lecture" || !(S.recurrents || []).length) return; const y = String(+rYear() - 1);
+  const L = S.recurrents.filter(r => r.id && !(r.bilan || {})[y] && r.cree && String(r.cree).slice(0, 4) <= y && ((+r.cible || 0) > 0 || rDone(r, y) > 0)); if (!L.length) return;
+  try { await SupaStore.patchRecs(L.map(r => ({ id: r.id, bilan: { ...(r.bilan || {}), [y]: { c: +r.cible || 0, r: rDone(r, y) } } })));
+    L.forEach(r => { r.bilan = { ...(r.bilan || {}), [y]: { c: +r.cible || 0, r: rDone(r, y) } }; }); toast("Bilan " + y + " des RDV récurrents enregistré"); if (S.view === "recurrents" || S.view === "dash") render(); } catch (e) {}
+}
+async function recClick(t) {
+  if (t.dataset.goRec || t.closest("[data-go-rec]")) { go("recurrents"); return true; }
+  const ro = t.closest("[data-ropen]"); if (ro && !t.closest(".sheet")) { openRec(ro.dataset.ropen); return true; }
+  if (t.id === "rnew") { S.rsel = "__new"; S.rdraft = { id: "", code: "", client: "", site: "", adresse: "", cible: 1, contact: "", fonction: "", tel: "", mail: "", dateRDV: "", heure: "", duree: "", lieu: "", objet: "", visites: [], bilan: {}, verrous: [], hist: "", source: "Saisie", modif: "" };
+    S.rpick = false; S.rpickQ = ""; render(); setTimeout(() => document.getElementById("r-client")?.focus(), 0); return true; }
+  if (t.id === "rclose" || t.id === "rcancel") { const back = S.rback; S.rsel = null; S.rdraft = null; S.rpick = false; S.rback = null; if (back === "agenda" && t.id === "rclose") { S.view = "agenda"; } render(); return true; }
+  if (t.id === "rsave") { readRDraft(); await saveRec(); return true; }
+  if (t.id === "rdel") { S.confirmRDel = S.rdraft.id; readRDraft(); render(); return true; }
+  if (t.id === "rdel-no") { S.confirmRDel = null; render(); return true; }
+  if (t.id === "rdel-ok") { try { await SupaStore.deleteRec(S.rdraft.id, S); S.rsel = null; S.rdraft = null; S.confirmRDel = null; toast("Client supprimé"); render(); } catch (err) { toast("Suppression impossible : " + err.message); } return true; }
+  if (t.id === "rimp-no") { S.rimport = null; render(); return true; }
+  if (t.id === "rimp-ok") { const imp = S.rimport; if (!imp || imp.busy) return true; imp.busy = true; render();
+    try { await SupaStore.importRecs(imp.rows, m => { imp.prog = m; const b = document.getElementById("rimp-ok"); if (b) b.textContent = "Import en cours… " + m; });
+      const fresh = await SupaStore.all("recurrents"); S.recurrents = fresh.map(rFromDb); S.rimport = null; toast("Import terminé : " + imp.neuf + " nouveau(x), " + imp.maj + " mis à jour"); }
+    catch (err) { imp.busy = false; toast("Import impossible : " + err.message); } render(); return true; }
+  if (t.id === "rexport") { recCsv(); return true; }
+  if (t.id === "r-unlock") { readRDraft(); S.rdraft.verrous = []; toast("Enregistrez : le prochain import reprendra les valeurs de l'Excel"); render(); return true; }
+  if (t.id === "rpick-open") { readRDraft(); S.rpick = !S.rpick; if (S.rpick && !S.rpickQ) S.rpickQ = S.rdraft.client || ""; render(); if (S.rpick) setTimeout(() => { const q = document.getElementById("rpick-q"); if (q) { q.focus(); q.select(); } }, 0); return true; }
+  const pk = t.closest("[data-rpick]"); if (pk) { readRDraft(); const c = S.contacts.find(x => String(x.id) === String(pk.dataset.rpick)); if (!c) return true; const d = S.rdraft;
+    d.contact = cname(c) || c.societe || ""; d.fonction = c.fonction || ""; d.tel = c.mobile || c.tel || ""; d.mail = c.email || "";
+    if (!d.adresse) d.adresse = [c.adresse, [c.cp, c.ville].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    S.rpick = false; toast("Contact repris du carnet : pensez à enregistrer"); render(); return true; }
+  if (t.id === "rnote-add") { readRDraft(); const el = document.getElementById("rnote"), v = (el.value || "").trim(); if (!v) return true; rNote(v, "Note"); render(); return true; }
+  if (t.id === "rv-add") { readRDraft(); const dte = document.getElementById("rv-date").value; if (!dte) { toast("Indiquez la date de la visite"); return true; }
+    if (dte > isoToday()) { toast("Une visite réalisée ne peut pas être dans le futur"); return true; }
+    S.rdraft.visites = (S.rdraft.visites || []).concat([{ d: dte }]); rNote("Visite réalisée le " + fr(dte), "Visite"); toast("Visite ajoutée : pensez à enregistrer"); render(); return true; }
+  const vd = t.closest("[data-rv-del]"); if (vd) { readRDraft(); const i = +vd.dataset.rvDel, v = S.rdraft.visites[i]; S.rdraft.visites = S.rdraft.visites.filter((_, n) => n !== i); if (v) rNote("Visite du " + fr(v.d) + " retirée", "Note"); render(); return true; }
+  const rq = t.closest("[data-rq]"); if (rq) { readRDraft(); const d = S.rdraft, a = rq.dataset.rq, today = isoToday();
+    if (a === "done") { const dte = d.dateRDV && d.dateRDV <= today ? d.dateRDV : today; d.visites = (d.visites || []).concat([{ d: dte, h: d.dateRDV === dte ? d.heure || "" : "", du: d.dateRDV === dte ? d.duree || "" : "" }]);
+      rNote("Visite réalisée le " + fr(dte), "Visite"); if (d.dateRDV && d.dateRDV <= today) { d.dateRDV = ""; d.heure = ""; } toast("Visite comptée : pensez à enregistrer"); render(); return true; }
+    if (a === "cancel") { if (!d.dateRDV) { toast("Aucun RDV fixé à annuler"); return true; } rNote("RDV du " + fr(d.dateRDV) + (d.heure ? " à " + d.heure : "") + " annulé", "RDV"); d.dateRDV = ""; d.heure = ""; toast("RDV annulé : pensez à enregistrer"); render(); return true; }
+    if (!d.dateRDV) { toast("Indiquez d'abord la date du RDV"); return true; }
+    if (a === "outlook") { window.open(outlookUrl(recFiche({ ...d, id: d.id || "nouveau" })), "_blank", "noopener"); if (S.access !== "lecture") await saveRec(true); toast("Outlook ouvert : vérifiez puis envoyez l'invitation"); return true; }
+    if (a === "ics") { icsFor(recFiche({ ...d, id: d.id || "nouveau" })); if (S.access !== "lecture") await saveRec(true); toast("Fichier .ics téléchargé : ouvrez-le pour l'ajouter à Outlook"); return true; }
+  }
+  return false;
+}
 const MOIS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
-const agRdv = () => S.fiches.filter(f => f.dateRDV && (f.etape === ETAPES[3] || f.etape === ETAPES[4]))
+const agRdv = () => S.fiches.filter(f => f.dateRDV && (f.etape === ETAPES[3] || f.etape === ETAPES[4])).concat(recAgenda())
   .sort((a, b) => (a.dateRDV + (a.heure || "")).localeCompare(b.dateRDV + (b.heure || "")));
 const H0 = 7, H1 = 20, HPX = 48;
 const JOURS_L = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
@@ -1927,7 +2171,7 @@ function render() {
   const sc = window.scrollY;
   if (S.needsLogin || S.notMember) { $app.innerHTML = viewLogin(S.notMember ? "L'adresse " + SupaStore.user + " n'est pas autorisée. Demandez à Damien de l'ajouter." : S.loginMsg); return; }
   if (S.map) { try { S.map.remove(); } catch (e) {} S.map = null; }
-  $app.innerHTML = S.view === "dash" ? viewDash() : S.view === "fiches" ? viewFiches() : S.view === "offres" ? viewOffres() : S.view === "agenda" ? viewAgenda() : S.view === "carnet" ? viewCarnet() : S.view === "tournees" ? viewTournees() : viewSetup();
+  $app.innerHTML = S.view === "dash" ? viewDash() : S.view === "fiches" ? viewFiches() : S.view === "offres" ? viewOffres() : S.view === "recurrents" ? viewRecurrents() : S.view === "agenda" ? viewAgenda() : S.view === "carnet" ? viewCarnet() : S.view === "tournees" ? viewTournees() : viewSetup();
   mobFilters(); applyReadOnly(); setHdr();
   if (S.view === "fiches" && S.fmode === "carte") drawMap(filtered());
   const m = document.getElementById("mode"); if (m) { m.textContent = S.access === "lecture" ? "LECTURE SEULE" : "EN LIGNE"; m.classList.toggle("live", S.access !== "lecture"); }
@@ -1937,7 +2181,7 @@ function mobFilters() {
   const cnt = F => ["etape","pays","prio","resp","alerte","flag","statut"].filter(k => F[k]).length + (F.zones && F.zones.length ? 1 : 0) + (F.open === "1" ? 0 : 1);
   $app.querySelectorAll(".split>div>.filters").forEach(el => {
     const q = el.querySelector('input[type=search]'); if (!q) return;
-    const n = S.view === "fiches" ? cnt(S.flt) : S.view === "offres" ? cnt(S.oflt) : S.view === "carnet" ? (S.cHide ? 1 : 0) : 0;
+    const n = S.view === "fiches" ? cnt(S.flt) : S.view === "offres" ? cnt(S.oflt) : S.view === "carnet" ? (S.cHide ? 1 : 0) : S.view === "recurrents" ? (S.rflt.etat ? 1 : 0) + (S.rflt.hide ? 0 : 1) : 0;
     const b = document.createElement("button"); b.type = "button"; b.className = "btn small f-toggle" + (n ? " on" : ""); b.dataset.ftoggle = "1";
     b.setAttribute("aria-expanded", String(!!S.fopen)); b.textContent = (S.fopen ? "Masquer les filtres" : "Filtres") + (n ? " (" + n + ")" : "");
     q.after(b); el.classList.toggle("open", !!S.fopen);
@@ -1945,7 +2189,7 @@ function mobFilters() {
 }
 function setHdr() { const h = document.querySelector("header.top"); if (h) document.documentElement.style.setProperty("--hdr", Math.round(h.getBoundingClientRect().height) + "px"); }
 window.addEventListener("resize", () => { clearTimeout(setHdr.t); setHdr.t = setTimeout(setHdr, 100); });
-function go(view) { if (view === "setup" && SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal(), loadSauvegarde()]).then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } if (view !== "offres") { S.osel = null; S.odraft = null; S.opendingFile = null; } if (view !== "carnet") { S.csel = null; S.cdraft = null; } S.pick = false; render(); window.scrollTo(0,0); }
+function go(view) { if (view === "setup" && SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal(), loadSauvegarde()]).then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } if (view !== "offres") { S.osel = null; S.odraft = null; S.opendingFile = null; } if (view !== "carnet") { S.csel = null; S.cdraft = null; } if (view !== "recurrents") { S.rsel = null; S.rdraft = null; S.rpick = false; } S.pick = false; render(); window.scrollTo(0,0); }
 function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.back = S.view === "agenda" ? "agenda" : S.view === "offres" && S.osel ? "offres" : null; S.sel = id; S.draft = {...f}; S.pick = false; S.pickMode = "principal"; S.confirmPDel = null; S.view = "fiches"; render(); }
 function newFiche() { S.sel = "__new"; S.draft = { id:"", soc:"", contact:"", tel:"", mail:"", adr:"", pays:"", zone:"", statut:"Prospect", prio:2, objet:"", consigne:"",
   resp:"Vit'Admin", etape:ETAPES[0], nb:0, last:"", relance:"", dateRDV:"", heure:"", duree:"", lieu:"", agenda:"", hist:"", entree:"", modif:"" }; render(); setTimeout(() => document.getElementById("d-soc")?.focus(), 0); }
@@ -1960,6 +2204,7 @@ document.getElementById("role").addEventListener("click", e => { const b = e.tar
 
 $app.addEventListener("click", async e => {
   const t = e.target;
+  if (await recClick(t)) return;
   if (t.closest("#zsel-btn")) { S.zopen = !S.zopen; S.zq = ""; render(); if (S.zopen) setTimeout(() => document.getElementById("zq")?.focus(), 0); return; }
   if (t.id === "zclose") { S.zopen = false; render(); return; }
   if (t.id === "zclear") { S.flt.zones = []; saveUi(); render(); return; }
@@ -1985,7 +2230,7 @@ $app.addEventListener("click", async e => {
     const f = S.fiches.find(x => String(x.id) === String(fl.dataset.flag)); if (!f) return;
     try { const saved = await Store.saveFiche({ ...f, flag: f.flag !== true }, S); if (S.draft && String(S.draft.id) === String(saved.id)) S.draft.flag = saved.flag; render(); toast(saved.flag === true ? "Flag activé : " + saved.soc : "Flag retiré : " + saved.soc); }
     catch (err) { toast("Flag impossible : " + err.message); } return; }
-  const o = t.closest("[data-open]"); if (o && !t.closest(".sheet")) { openFiche(o.dataset.open); return; }
+  const o = t.closest("[data-open]"); if (o && !t.closest(".sheet")) { if (/^r\d/.test(o.dataset.open)) openRec(o.dataset.open.slice(1), true); else openFiche(o.dataset.open); return; }
   if (t.closest("#d-flag")) { readDraft(); S.draft.flag = S.draft.flag !== true; render(); toast(S.draft.flag ? "Flag activé : enregistrez la fiche" : "Flag retiré : enregistrez la fiche"); return; }
   const th = t.closest("[data-theme-set]"); if (th) { const k = th.dataset.themeSet;
     if (k === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = k;
@@ -2169,6 +2414,8 @@ $app.addEventListener("click", async e => {
 });
 $app.addEventListener("input", e => {
   const t = e.target;
+  if (t.id === "rq" || t.id === "rpick-q") { const id = t.id; if (id === "rq") S.rflt.q = t.value; else { S.rpickQ = t.value; readRDraft(); }
+    clearTimeout(render.h); render.h = setTimeout(() => { render(); const q = document.getElementById(id); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 180); }
   if (t.id === "zq") { S.zq = t.value; clearTimeout(render.h); render.h = setTimeout(() => { render(); const q = document.getElementById("zq"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 150); }
   if (t.id === "cq" || t.id === "pick-q") { const id = t.id; if (id === "cq") S.cq = t.value; else S.pickQ = t.value; if (id === "pick-q") readDraft();
     clearTimeout(render.h); render.h = setTimeout(() => { render(); const q = document.getElementById(id); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 180); }
@@ -2176,6 +2423,11 @@ $app.addEventListener("input", e => {
   if (t.id === "q") { S.flt.q = t.value; clearTimeout(render.h); render.h = setTimeout(() => { saveUi(); render(); const q = document.getElementById("q"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 180); }
 });
 $app.addEventListener("change", async e => {
+  if (e.target.id === "r-import" && e.target.files[0]) { const file = e.target.files[0];
+    try { const list = await readRecFile(file); S.rimport = { file: file.name, ...prepareRecImport(list) }; render(); }
+    catch (err) { toast("Import impossible : " + err.message); } e.target.value = ""; return; }
+  if (e.target.id === "rf-etat") { S.rflt.etat = e.target.value; render(); return; }
+  if (e.target.id === "r-hide") { S.rflt.hide = e.target.checked; try { localStorage.setItem("mgh-r-hide", S.rflt.hide ? "1" : "0"); } catch (er) {} render(); return; }
   if (e.target.id === "inst-file" && e.target.files[0]) { const inp = e.target; inp.disabled = true;
     const log = m => { S.instLog = (S.instLog ? S.instLog + "\n" : "") + m; const el = document.getElementById("inst-log"); if (el) el.textContent = S.instLog; };
     try { const rows = JSON.parse(await inp.files[0].text()); if (!Array.isArray(rows)) throw new Error("fichier non conforme");
@@ -2283,10 +2535,15 @@ if ("serviceWorker" in navigator && location.protocol === "https:") navigator.se
 (() => { const h = document.getElementById("home-logo"); if (!h) return; const goHome = () => { S.sel = null; S.draft = null; S.osel = null; S.odraft = null; S.csel = null; S.cdraft = null; S.pick = false; go("dash"); };
   h.addEventListener("click", goHome); h.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome(); } }); })();
 function boot2() {
+  setTimeout(recCloture, 1500);
   if (S.needsLogin || S.notMember || boot2.done) return; boot2.done = true;
   if (!S.fiches.length) S.view = "setup";
   if (SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal(), loadSauvegarde()]).then(() => { if (S.view === "setup") render(); });
   SupaStore.live((table, p) => {
+    if (table === "recurrents") { const L = S.recurrents || (S.recurrents = []);
+      if (p.eventType === "DELETE") { const i = L.findIndex(x => x.id === p.old.id); if (i >= 0) L.splice(i, 1); }
+      else { if (!p.new || p.new.id === undefined || p.new.id === null) return; const o = rFromDb(p.new), i = L.findIndex(x => x.id === o.id); if (i >= 0) L[i] = o; else L.push(o); }
+      if (S.sel || S.osel || S.csel || S.rsel || S.rimport) S.pending = true; else render(); return; }
     const map = { fiches: COLS, offres: OCOLS, contacts: CCOLS, pieces: PCOLS }[table] || TCOLS, list = { fiches: S.fiches, offres: S.offres, contacts: S.contacts, pieces: S.pieces }[table] || S.tournees;
     if (p.eventType === "DELETE") { const i = list.findIndex(x => x.id === p.old.id); if (i >= 0) list.splice(i, 1); }
     else { if (!p.new || p.new.id === undefined || p.new.id === null) return; const o = SupaStore.fromDb(p.new, map); const i = list.findIndex(x => x.id === o.id); if (i >= 0) list[i] = o; else list.unshift(o); }

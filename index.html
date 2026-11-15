@@ -408,7 +408,7 @@ const CONFIG = {
   supabaseUrl: "https://qexfitgmhzpgengmbxqk.supabase.co",
   supabaseKey: "sb_publishable_h-VgO27UVILom4l6YFsSdA_wd46MdJf"   // clé publique, protégée par les règles d'accès de la base
 };
-const APP_VERSION = "2026.11.15-1400";
+const APP_VERSION = "2026.11.15-1715";
 const ETAPES = ["1-À contacter","2-Tentative en cours","3-RDV proposé","4-RDV fixé","5-RDV réalisé","6-Recontacter plus tard","7-Refus / hors cible"];
 const ET_COLORS = ["#8F9298","#5468A8","#C77700","#24346C","#2E7D32","#6B6E74","#B71C1C"];
 const LIEUX = ["Sur site client","Atelier Machelen","Atelier Anvers","Teams / visio","Téléphone","Salon / événement"];
@@ -2182,6 +2182,7 @@ function render() {
   document.querySelectorAll("#role button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.role === S.role)));
 
   const sc = window.scrollY;
+  const shOld = document.querySelector("#app .sheet"), shTop = shOld ? shOld.scrollTop : 0, shKey = [S.view, S.sel, S.osel, S.csel, S.rsel].join("|");
   if (S.needsLogin || S.notMember) { $app.innerHTML = viewLogin(S.notMember ? "L'adresse " + SupaStore.user + " n'est pas autorisée. Demandez à Damien de l'ajouter." : S.loginMsg); return; }
   if (S.map) { try { S.map.remove(); } catch (e) {} S.map = null; }
   $app.innerHTML = S.view === "dash" ? viewDash() : S.view === "fiches" ? viewFiches() : S.view === "offres" ? viewOffres() : S.view === "recurrents" ? viewRecurrents() : S.view === "agenda" ? viewAgenda() : S.view === "carnet" ? viewCarnet() : S.view === "tournees" ? viewTournees() : viewSetup();
@@ -2189,6 +2190,8 @@ function render() {
   if (S.view === "fiches" && S.fmode === "carte") drawMap(filtered());
   const m = document.getElementById("mode"); if (m) { m.textContent = S.access === "lecture" ? "LECTURE SEULE" : "EN LIGNE"; m.classList.toggle("live", S.access !== "lecture"); }
   window.scrollTo(0, sc);
+  const shNew = document.querySelector("#app .sheet"); if (shNew && shTop && render.shKey === shKey) shNew.scrollTop = shTop;
+  render.shKey = shKey;
 }
 function mobFilters() {
   const cnt = F => ["etape","pays","prio","resp","alerte","flag","statut"].filter(k => F[k]).length + (F.zones && F.zones.length ? 1 : 0) + (F.open === "1" ? 0 : 1);

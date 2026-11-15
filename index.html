@@ -408,7 +408,7 @@ const CONFIG = {
   supabaseUrl: "https://qexfitgmhzpgengmbxqk.supabase.co",
   supabaseKey: "sb_publishable_h-VgO27UVILom4l6YFsSdA_wd46MdJf"   // clé publique, protégée par les règles d'accès de la base
 };
-const APP_VERSION = "2026.11.15-1345";
+const APP_VERSION = "2026.11.15-1400";
 const ETAPES = ["1-À contacter","2-Tentative en cours","3-RDV proposé","4-RDV fixé","5-RDV réalisé","6-Recontacter plus tard","7-Refus / hors cible"];
 const ET_COLORS = ["#8F9298","#5468A8","#C77700","#24346C","#2E7D32","#6B6E74","#B71C1C"];
 const LIEUX = ["Sur site client","Atelier Machelen","Atelier Anvers","Teams / visio","Téléphone","Salon / événement"];
@@ -529,7 +529,7 @@ const CCOLS = { prenom:"prenom", nom:"nom", societe:"societe", fonction:"fonctio
 const PCOLS = { ficheId:"fiche_id", nom:"nom", path:"path", taille:"taille", type:"type", createdAt:"created_at", createdBy:"created_by" };
 const BOOLS = ["flag"];
 const RCOLS = { code:"code", client:"client", site:"site", adresse:"adresse", cible:"visites_cible", contact:"contact", fonction:"fonction", tel:"tel", mail:"mail",
-  dateRDV:"date_rdv", heure:"heure", duree:"duree", lieu:"lieu", objet:"objet", visites:"visites", bilan:"bilan", verrous:"verrous", hist:"hist", source:"source", cree:"created_at", flag:"flag" };
+  dateRDV:"date_rdv", heure:"heure", duree:"duree", lieu:"lieu", objet:"objet", visites:"visites", bilan:"bilan", verrous:"verrous", hist:"hist", source:"source", cree:"created_at", flag:"flag", consigne:"consigne" };
 const TCOLS = { du:"du", au:"au", zone:"zone", dispo:"dispo", consigne:"consigne" };
 const OCOLS = { num:"num", dateOffre:"date_offre", clientNum:"client_num", projet:"projet", soc:"soc", contact:"contact", tel:"tel", mail:"mail",
   adr:"adr", pays:"pays", zone:"zone", tva:"tva", nature:"nature", objet:"objet", lignes:"lignes", montantHT:"montant_ht", montantTTC:"montant_ttc",
@@ -584,7 +584,7 @@ const SupaStore = {
     try { contacts = (await this.all("contacts")).map(r => this.fromDb(r, CCOLS)); } catch (e) { contactsKo = e.message; }
     try { pieces = (await this.all("pieces")).map(r => this.fromDb(r, PCOLS)); } catch (e) { piecesKo = e.message; }
     let recurrents = [], recurrentsKo = "";
-    try { const rr = await this.all("recurrents"); this.recFlag = !rr.length || "flag" in rr[0]; recurrents = rr.map(rFromDb); } catch (e) { recurrentsKo = e.message; }
+    try { const rr = await this.all("recurrents"); this.recFlag = !rr.length || "flag" in rr[0]; this.recConsigne = !rr.length || "consigne" in rr[0]; recurrents = rr.map(rFromDb); } catch (e) { recurrentsKo = e.message; }
     return { fiches: a.map(r => this.fromDb(r, COLS)), tournees: b.map(r => this.fromDb(r, TCOLS)), offres, offresKo, contacts, pieces, contactsKo, piecesKo, recurrents, recurrentsKo, needsLogin: false, notMember: false,
       access: role === "lecture" ? "lecture" : "editeur" };
   },
@@ -1525,7 +1525,7 @@ function rFromDb(r) { const o = SupaStore.fromDb(r, RCOLS); o.cible = +o.cible |
 function rToDb(o) { const t = v => String(v ?? "").trim() || null;
   return { code: t(o.code), client: t(o.client), site: t(o.site), adresse: t(o.adresse), visites_cible: Math.max(0, Math.round(+o.cible || 0)), contact: t(o.contact), fonction: t(o.fonction), tel: t(o.tel), mail: t(o.mail),
     date_rdv: o.dateRDV || null, heure: o.heure || null, duree: o.duree === "" || o.duree == null || isNaN(+o.duree) ? null : +o.duree, lieu: t(o.lieu), objet: t(o.objet),
-    visites: o.visites || [], bilan: o.bilan || {}, verrous: o.verrous || [], hist: o.hist || "", source: o.source || "Saisie", ...(SupaStore.recFlag ? { flag: o.flag === true } : {}) }; }
+    visites: o.visites || [], bilan: o.bilan || {}, verrous: o.verrous || [], hist: o.hist || "", source: o.source || "Saisie", ...(SupaStore.recFlag ? { flag: o.flag === true } : {}), ...(SupaStore.recConsigne ? { consigne: t(o.consigne) } : {}) }; }
 const rYear = () => isoToday().slice(0, 4);
 const rDone = (r, y) => (r.visites || []).filter(v => String(v.d || "").startsWith(y || rYear())).length;
 const rReste = r => Math.max(0, (+r.cible || 0) - rDone(r));
@@ -1536,7 +1536,7 @@ const rLabel = r => r.client || r.site || "(sans nom)";
 const rEtat = r => r.dateRDV ? "RDV fixé" : (+r.cible || 0) === 0 ? "Sans cible" : rReste(r) === 0 ? "Objectif atteint" : "À planifier";
 const RETATS = ["À planifier", "RDV fixé", "Objectif atteint", "Sans cible"];
 function recFiche(r) { return { id: "r" + r.id, rec: true, soc: rLabel(r) + (r.site && !rSame(r) ? " · " + r.site : ""), contact: r.contact, tel: r.tel, mail: r.mail, adr: r.adresse,
-  dateRDV: r.dateRDV, heure: r.heure, duree: r.duree, lieu: r.lieu, objet: r.objet || "Visite récurrente", consigne: "", ref: r.code, pays: "", zone: "", etape: ETAPES[3] }; }
+  dateRDV: r.dateRDV, heure: r.heure, duree: r.duree, lieu: r.lieu, objet: r.objet || "Visite récurrente", consigne: r.consigne || "", ref: r.code, pays: "", zone: "", etape: ETAPES[3] }; }
 function recAgenda() { const out = []; (S.recurrents || []).forEach(r => { const f = recFiche(r); f.soc = "↻ " + f.soc;
   if (r.dateRDV) out.push(f);
   (r.visites || []).forEach(v => { if (v.d) out.push({ ...f, dateRDV: v.d, heure: v.h || "", duree: v.du || "", etape: ETAPES[4] }); }); }); return out; }
@@ -1606,6 +1606,7 @@ function rSheet() {
       <div><div class="lbl" style="margin-bottom:6px">Actions rapides</div><div class="quick">
         ${SupaStore.recFlag ? `<button class="btn small" data-rq="flag" type="button" aria-pressed="${r.flag === true}" style="${r.flag ? "border-color:var(--warn);color:var(--warn);background:var(--warn-soft)" : ""}">⚑ ${r.flag ? "Flag activé : à planifier" : "Flag : à planifier"}</button>` : ""}
         <button class="btn small" data-rq="done" type="button">RDV réalisé</button><button class="btn small" data-rq="cancel" type="button">RDV annulé</button></div></div>
+      ${SupaStore.recConsigne ? `<div class="f"><label for="r-consigne">Consignes</label><textarea id="r-consigne" data-rk="consigne" rows="3" placeholder="Consignes pour la prise de RDV et la visite (ex. prévenir la maintenance, badge à l'accueil)">${esc(r.consigne)}</textarea></div>` : ""}
       <fieldset><legend class="lbl">Client</legend>
         ${inp("client","Client","text","full")}${inp("site","Site / adresse de visite","text","full")}${inp("adresse","Adresse","text","full")}${inp("code","Code client")}
         ${inp("cible","Nbre de visites cible (par an)","number","",'min="0" step="1"')}
@@ -1692,7 +1693,7 @@ async function recClick(t) {
   const rf = t.closest("[data-rflag]"); if (rf) { if (S.access === "lecture") return true; const r = S.recurrents.find(x => String(x.id) === String(rf.dataset.rflag)); if (!r) return true;
     try { await SupaStore.flagRec(r.id, !r.flag, S); if (S.rdraft && String(S.rdraft.id) === String(r.id)) S.rdraft.flag = r.flag; toast(r.flag ? "Flag activé : RDV à planifier" : "Flag retiré"); render(); } catch (err) { toast("Flag impossible : " + err.message); } return true; }
   const ro = t.closest("[data-ropen]"); if (ro && !t.closest(".sheet")) { openRec(ro.dataset.ropen); return true; }
-  if (t.id === "rnew") { S.rsel = "__new"; S.rdraft = { id: "", code: "", client: "", site: "", adresse: "", cible: 1, contact: "", fonction: "", tel: "", mail: "", dateRDV: "", heure: "", duree: "", lieu: "", objet: "", visites: [], bilan: {}, verrous: [], hist: "", source: "Saisie", flag: false, modif: "" };
+  if (t.id === "rnew") { S.rsel = "__new"; S.rdraft = { id: "", code: "", client: "", site: "", adresse: "", cible: 1, contact: "", fonction: "", tel: "", mail: "", dateRDV: "", heure: "", duree: "", lieu: "", objet: "", visites: [], bilan: {}, verrous: [], hist: "", source: "Saisie", flag: false, consigne: "", modif: "" };
     S.rpick = false; S.rpickQ = ""; render(); setTimeout(() => document.getElementById("r-client")?.focus(), 0); return true; }
   if (t.id === "rclose" || t.id === "rcancel") { const back = S.rback; S.rsel = null; S.rdraft = null; S.rpick = false; S.rback = null; if (back === "agenda" && t.id === "rclose") { S.view = "agenda"; } render(); return true; }
   if (t.id === "rsave") { readRDraft(); await saveRec(); return true; }

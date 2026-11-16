@@ -408,7 +408,7 @@ const CONFIG = {
   supabaseUrl: "https://qexfitgmhzpgengmbxqk.supabase.co",
   supabaseKey: "sb_publishable_h-VgO27UVILom4l6YFsSdA_wd46MdJf"   // clé publique, protégée par les règles d'accès de la base
 };
-const APP_VERSION = "2026.11.15-1830";
+const APP_VERSION = "2026.11.16-1215";
 const ETAPES = ["1-À contacter","2-Tentative en cours","3-RDV proposé","4-RDV fixé","5-RDV réalisé","6-Recontacter plus tard","7-Refus / hors cible"];
 const ET_COLORS = ["#8F9298","#5468A8","#C77700","#24346C","#2E7D32","#6B6E74","#B71C1C"];
 const LIEUX = ["Sur site client","Atelier Machelen","Atelier Anvers","Teams / visio","Téléphone","Salon / événement"];
@@ -753,7 +753,7 @@ const SupaStore = {
 const Store = CONFIG.mode === "supabase" ? SupaStore : DemoStore;
 
 /* ===================== État de l'interface ===================== */
-const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], offres: [], contacts: [], pieces: [], recurrents: [], rsel: null, rdraft: null, rflt: { q: "", etat: "", hide: true, flag: false }, csel: null, cdraft: null, cq: "", pick: false, pickQ: "", osel: null, odraft: null, opendingFile: null,
+const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], offres: [], contacts: [], pieces: [], recurrents: [], rsel: null, rdraft: null, rflt: { q: "", etat: "", hide: true, flag: false, dbl: false }, csel: null, cdraft: null, cq: "", pick: false, pickQ: "", osel: null, odraft: null, opendingFile: null,
   oflt: { q: "", statut: "", alerte: "", resp: "", open: "1" }, osort: ["relance", 1], view: "dash", role: "DM", sel: null, draft: null,
   flt: { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1", flag: "", zones: [] }, sort: ["relance", 1] };
 try { const p = JSON.parse(localStorage.getItem("mgh-suivi-rdv-ui") || "{}"); if (p.role) S.role = p.role; if (p.flt) Object.assign(S.flt, p.flt); } catch (e) {}
@@ -1542,16 +1542,31 @@ function recFiche(r) { return { id: "r" + r.id, rec: true, soc: rLabel(r) + (r.s
 function recAgenda() { const out = []; (S.recurrents || []).forEach(r => { const f = recFiche(r); f.soc = "↻ " + f.soc;
   if (r.dateRDV) out.push(f);
   (r.visites || []).forEach(v => { if (v.d) out.push({ ...f, dateRDV: v.d, heure: v.h || "", duree: v.du || "", etape: ETAPES[4] }); }); }); return out; }
+// Doublons d'adresse : même adresse normalisée (accents, ponctuation et casse ignorés) sur plusieurs clients récurrents
+const rAddrKey = a => rNorm(a).replace(/[^a-z0-9]+/g, " ").trim();
+function rDupMap() { const L = S.recurrents || [];
+  if (rDupMap.c && rDupMap.c.L === L && rDupMap.c.n === L.length && rDupMap.c.sig === L.map(r => r.adresse).join("¦")) return rDupMap.c.m;
+  const g = new Map(); L.forEach(r => { const k = rAddrKey(r.adresse); if (k.length < 6) return; if (!g.has(k)) g.set(k, []); g.get(k).push(r); });
+  const m = new Map(); g.forEach(v => { if (v.length > 1) v.forEach(r => m.set(r.id, v)); });
+  rDupMap.c = { L, n: L.length, sig: L.map(r => r.adresse).join("¦"), m }; return m; }
+const rDups = r => (rDupMap().get(r.id) || []).filter(x => x !== r && String(x.id) !== String(r.id));
+function rDupBadge(r) { const n = rDups(r).length; return n ? `<span class="al warn" title="${esc(rDups(r).map(rLabel).join(", "))}">Doublon d'adresse (${n + 1})</span>` : ""; }
 function rFiltered() { const q = rNorm(S.rflt.q).split(" ").filter(Boolean);
-  return (S.recurrents || []).filter(r => { if (S.rflt.hide && !(+r.cible || 0) && !rDone(r) && !r.dateRDV && !r.flag) return false;
+  return (S.recurrents || []).filter(r => { if (S.rflt.dbl) { if (!rDupMap().has(r.id)) return false; } else if (S.rflt.hide && !(+r.cible || 0) && !rDone(r) && !r.dateRDV && !r.flag) return false;
     if (S.rflt.etat && rEtat(r) !== S.rflt.etat) return false;
     if (S.rflt.flag && !r.flag) return false;
     if (q.length) { const t = rNorm([r.client, r.site, r.code, r.adresse, r.contact, intl(r).map(x => x.nom).join(" ")].join(" ")); if (!q.every(w => t.includes(w))) return false; }
-    return true; }).sort((a, b) => (b.flag === true) - (a.flag === true) || (+b.cible || 0) - (+a.cible || 0) || rLabel(a).localeCompare(rLabel(b)) || String(a.site || "").localeCompare(String(b.site || "")));
+    return true; }).sort((a, b) => (S.rflt.dbl ? rAddrKey(a.adresse).localeCompare(rAddrKey(b.adresse)) : 0) || (b.flag === true) - (a.flag === true) || (+b.cible || 0) - (+a.cible || 0) || rLabel(a).localeCompare(rLabel(b)) || String(a.site || "").localeCompare(String(b.site || "")));
 }
 function rTotals(L) { const c = L.reduce((n, r) => n + (+r.cible || 0), 0), d = L.reduce((n, r) => n + rDone(r), 0), reste = L.reduce((n, r) => n + rReste(r), 0);
   return { n: L.length, c, d, reste, pct: c ? Math.round(Math.min(d, c) / c * 100) : 0, rdv: L.filter(r => r.dateRDV).length }; }
 function rBar(r) { const c = +r.cible || 0, d = rDone(r); return c ? `<div class="rbar ${d >= c ? "full" : ""}"><i style="width:${Math.min(100, Math.round(d / c * 100))}%"></i></div>` : ""; }
+function rDraftDups(r) { const k = rAddrKey(r.adresse); if (k.length < 6) return []; return (S.recurrents || []).filter(x => String(x.id) !== String(r.id) && rAddrKey(x.adresse) === k); }
+function rSheetDup(r) { const D = rDraftDups(r); if (!D.length) return "";
+  return `<div class="p-dup" role="note" style="border:1px solid var(--warn);border-left:4px solid var(--warn);background:var(--warn-soft);border-radius:3px;padding:10px 12px;display:grid;gap:6px">
+    <b style="color:var(--warn)">Doublon d'adresse : ${D.length} autre(s) client(s) à la même adresse</b>
+    ${D.map(x => `<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b>${esc(rLabel(x))}</b>${rSame(x) ? "" : " · " + esc(x.site)}${x.code ? ` <span style="color:var(--muted)">${esc(x.code)}</span>` : ""} · ${+x.cible || 0} visite(s) cible${x.contact ? " · " + esc(x.contact) : ""}</span><button class="btn small" data-rgo="${esc(x.id)}" type="button">Ouvrir</button></div>`).join("")}
+    <small style="color:var(--muted)">Vérifiez s'il s'agit du même site : dans ce cas, regroupez les visites cible sur un seul client et mettez l'autre à 0.</small></div>`; }
 function rFlagBtn(r) { return `<button class="flagbtn ${r.flag ? "on" : ""}" data-rflag="${esc(r.id)}" title="${r.flag ? "Retirer le flag" : "Mettre en avant : RDV à planifier"}" aria-label="${r.flag ? "Retirer le flag" : "Activer le flag"}" aria-pressed="${r.flag === true}">${r.flag ? "⚑" : "⚐"}</button>`; }
 function recDash() {
   if (S.recurrentsKo || !(S.recurrents || []).length) return "";
@@ -1568,7 +1583,7 @@ function viewRecurrents() {
     <div class="drop w"><span style="flex:1 1 300px">Import Excel au format <b>data_recur</b> (colonnes Naam zakenpartner, Adres-ID, Straat, Plaats, Postcode, Aant bez/jaar). Un nouvel import met à jour clients, adresses et visites cible ; les contacts, RDV, visites réalisées, notes et valeurs modifiées à la main sont conservés.</span>
       <label class="btn small primary filebtn">Importer un fichier Excel<input type="file" id="r-import" accept=".xlsx,.xls,.csv"></label>
       <button class="btn small" id="rnew">+ Nouveau client</button></div>
-    ${imp ? `<div class="panel" style="margin-bottom:12px;border-color:var(--accent)"><b>${esc(imp.file)}</b> : ${imp.total} ligne(s) lue(s), <b>${imp.neuf}</b> nouveau(x) client(s), <b>${imp.maj}</b> mis à jour, ${imp.inch} inchangé(s)${imp.dbl ? ", " + imp.dbl + " doublon(s) ignoré(s)" : ""}${imp.manuels ? ", " + imp.manuels + " client(s) saisi(s) à la main conservé(s)" : ""}${imp.proteges ? ", " + imp.proteges + " valeur(s) modifiée(s) à la main conservée(s)" : ""}. Visites cible du fichier : <b>${imp.cible}</b>.${imp.absents ? ` ${imp.absents} client(s) déjà présent(s) ne figurent pas dans ce fichier : ils sont conservés.` : ""}
+    ${imp ? `<div class="panel" style="margin-bottom:12px;border-color:var(--accent)"><b>${esc(imp.file)}</b> : ${imp.total} ligne(s) lue(s), <b>${imp.neuf}</b> nouveau(x) client(s), <b>${imp.maj}</b> mis à jour, ${imp.inch} inchangé(s)${imp.dbl ? ", " + imp.dbl + " doublon(s) ignoré(s)" : ""}${imp.manuels ? ", " + imp.manuels + " client(s) saisi(s) à la main conservé(s)" : ""}${imp.proteges ? ", " + imp.proteges + " valeur(s) modifiée(s) à la main conservée(s)" : ""}. Visites cible du fichier : <b>${imp.cible}</b>.${imp.adrGroupes ? ` <span class="al warn">${imp.adrLignes} ligne(s) partagent une même adresse (${imp.adrGroupes} adresse(s))</span> : après l'import, cochez « Doublons d'adresse » pour les vérifier.` : ""}${imp.absents ? ` ${imp.absents} client(s) déjà présent(s) ne figurent pas dans ce fichier : ils sont conservés.` : ""}
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">${imp.rows.length ? `<button class="btn small primary" id="rimp-ok" ${imp.busy ? "disabled" : ""}>${imp.busy ? "Import en cours… " + esc(imp.prog || "") : "Importer " + imp.rows.length + " ligne(s)"}</button>` : `<span>Rien à importer : la liste est déjà à jour.</span>`}<button class="btn small" id="rimp-no" ${imp.busy ? "disabled" : ""}>Annuler</button></div></div>` : ""}
     <div class="kpis k5"><div class="kpi"><b class="num">${T.n}</b>Clients affichés</div><div class="kpi"><b class="num" id="r-tot-cible">${T.c}</b>Visites cible ${y}</div><div class="kpi"><b class="num" id="r-tot-done">${T.d}</b>Visites réalisées ${y}</div>
       <div class="kpi"><b class="num">${T.reste}</b>Reste à réaliser</div><div class="kpi"><b class="num">${T.pct} %</b>Avancement · ${T.rdv} RDV fixé(s)</div></div>
@@ -1577,19 +1592,21 @@ function viewRecurrents() {
       <select id="rf-etat" aria-label="État">${opts(RETATS, S.rflt.etat, "Tous les états")}</select>
       <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="r-hide" ${S.rflt.hide ? "checked" : ""}> Masquer les clients sans visite cible (${nz})</label>
       ${SupaStore.recFlag ? `<label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="r-flag" ${S.rflt.flag ? "checked" : ""}> Flag uniquement (${all.filter(r => r.flag).length})</label>` : ""}
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px" title="Clients récurrents qui partagent la même adresse"><input type="checkbox" id="r-dbl" ${S.rflt.dbl ? "checked" : ""}> Doublons d'adresse (${rDupMap().size})</label>
+      <button class="btn small" id="rprint-list">Imprimer la liste</button>
       <button class="btn small" id="rexport">Exporter (CSV)</button>
       <span class="count num">${L.length} / ${all.length} client(s)</span>
     </div>
     <div class="tablewrap"><table>
       <thead><tr>${SupaStore.recFlag ? `<th title="À planifier en priorité">⚑</th>` : ""}<th>Clients</th><th>Adresse</th><th>Contact</th><th style="text-align:right">Nbre de visites cible</th><th style="text-align:right">Réalisées ${y}</th><th style="text-align:right">Reste</th><th>Prochain RDV</th></tr></thead>
       <tbody>${L.slice(0, 500).map(r => `<tr data-ropen="${esc(r.id)}" class="${String(S.rsel) === String(r.id) ? "sel" : ""} ${r.flag ? "flag" : ""}">
-        ${SupaStore.recFlag ? `<td>${rFlagBtn(r)}</td>` : ""}<td class="soc">${esc(rLabel(r))}${r.site && !rSame(r) ? `<small style="display:block;font-weight:500;color:var(--muted)">${esc(r.site)}</small>` : ""}</td><td>${esc(r.adresse)}</td><td>${esc(r.contact)}</td>
+        ${SupaStore.recFlag ? `<td>${rFlagBtn(r)}</td>` : ""}<td class="soc">${esc(rLabel(r))}${r.site && !rSame(r) ? `<small style="display:block;font-weight:500;color:var(--muted)">${esc(r.site)}</small>` : ""}</td><td>${esc(r.adresse)}${rDupMap().has(r.id) ? "<br>" + rDupBadge(r) : ""}</td><td>${esc(r.contact)}</td>
         <td class="rnum" style="text-align:right">${+r.cible || 0}</td><td class="rnum" style="text-align:right">${rDone(r)}${rBar(r)}</td><td class="rnum" style="text-align:right;${rReste(r) ? "color:var(--warn)" : ""}">${rReste(r)}</td><td>${rdv(r)}</td></tr>`).join("")
         || `<tr><td colspan="8" class="empty">${all.length ? "Aucun client trouvé avec ces filtres." : "Liste vide : importez le fichier Excel ou ajoutez un client."}</td></tr>`}
         ${L.length ? `<tr class="tot"><td colspan="${SupaStore.recFlag ? 4 : 3}">Total (${T.n} client(s))</td><td class="rnum" style="text-align:right">${T.c}</td><td class="rnum" style="text-align:right">${T.d}</td><td class="rnum" style="text-align:right">${T.reste}</td><td>${T.rdv} RDV fixé(s)</td></tr>` : ""}</tbody>
     </table></div>
     <div class="cards">${L.slice(0, 150).map(r => `<button class="card ${r.flag ? "flag" : ""}" data-ropen="${esc(r.id)}"><span class="top-l"><span class="soc">${r.flag ? "⚑ " : ""}${esc(rLabel(r))}</span><span class="rnum">${rDone(r)} / ${+r.cible || 0}</span></span>
-      <span class="meta"><span>${esc(r.site && !rSame(r) ? r.site : r.adresse)}</span>${r.dateRDV ? `<span>RDV ${fr(r.dateRDV)}${r.heure ? " " + esc(r.heure) : ""}</span>` : ""}</span>${rBar(r)}</button>`).join("")}</div>
+      <span class="meta"><span>${esc(r.site && !rSame(r) ? r.site : r.adresse)}</span>${rDupMap().has(r.id) ? rDupBadge(r) : ""}${r.dateRDV ? `<span>RDV ${fr(r.dateRDV)}${r.heure ? " " + esc(r.heure) : ""}</span>` : ""}</span>${rBar(r)}</button>`).join("")}</div>
     ${L.length > 500 ? `<p class="empty">500 premiers clients affichés : affinez la recherche.</p>` : ""}
   </div>${S.rsel ? rSheet() : ""}</div>`;
 }
@@ -1609,6 +1626,7 @@ function rSheet() {
       <div><div class="lbl" style="margin-bottom:6px">Actions rapides</div><div class="quick">
         ${SupaStore.recFlag ? `<button class="btn small" data-rq="flag" type="button" aria-pressed="${r.flag === true}" style="${r.flag ? "border-color:var(--warn);color:var(--warn);background:var(--warn-soft)" : ""}">⚑ ${r.flag ? "Flag activé : à planifier" : "Flag : à planifier"}</button>` : ""}
         <button class="btn small" data-rq="done" type="button">RDV réalisé</button><button class="btn small" data-rq="cancel" type="button">RDV annulé</button><button class="btn small w" id="r-spot" type="button" title="Crée une fiche RDV spot préremplie avec ce client">+ RDV spot pour ce client</button></div></div>
+      ${rSheetDup(r)}
       ${SupaStore.recConsigne ? `<div class="f"><label for="r-consigne">Consignes</label><textarea id="r-consigne" data-rk="consigne" rows="3" placeholder="Consignes pour la prise de RDV et la visite (ex. prévenir la maintenance, badge à l'accueil)">${esc(r.consigne)}</textarea></div>` : ""}
       <fieldset><legend class="lbl">Client</legend>
         ${inp("client","Client","text","full")}${inp("site","Site / adresse de visite","text","full")}${inp("adresse","Adresse","text","full")}${inp("code","Code client")}
@@ -1640,7 +1658,7 @@ function rSheet() {
         <div class="hist" style="margin-top:6px">${histHtml(r.hist)}</div></div>
     </div>
     <div class="sheet-f"><span class="stamp">${r.modif ? "Modifié le " + esc(r.modif) : r.id ? "" : "Non enregistré"}</span>
-      <span style="display:flex;gap:8px;flex-wrap:wrap">${r.id ? (S.confirmRDel === r.id ? `<button class="btn small w" id="rdel-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="rdel-no">Garder</button>` : `<button class="btn small ghost w" id="rdel" style="color:var(--crit)">Supprimer</button>`) : ""}<button class="btn small" id="rcancel">Annuler</button><button class="btn primary small w" id="rsave">Enregistrer</button></span></div>
+      <span style="display:flex;gap:8px;flex-wrap:wrap">${r.id ? (S.confirmRDel === r.id ? `<button class="btn small w" id="rdel-ok" style="background:var(--crit);border-color:var(--crit);color:#fff">Confirmer la suppression</button><button class="btn small" id="rdel-no">Garder</button>` : `<button class="btn small ghost w" id="rdel" style="color:var(--crit)">Supprimer</button>`) : ""}<button class="btn small" id="rprint">Imprimer</button><button class="btn small" id="rcancel">Annuler</button><button class="btn primary small w" id="rsave">Enregistrer</button></span></div>
   </aside>`;
 }
 function rPicker(q, P) { return `<div class="f full"><div class="picker" id="rpicker"><input type="search" id="rpick-q" placeholder="Rechercher un nom, une société, un mail…" value="${esc(q)}" aria-label="Rechercher dans le carnet">
@@ -1658,7 +1676,9 @@ async function saveRec(silent) {
   if (r.dateRDV && (!old || old.dateRDV !== r.dateRDV)) r.flag = false;
   if (old && old.dateRDV !== r.dateRDV && r.dateRDV) rNote("RDV fixé le " + fr(r.dateRDV) + (r.heure ? " à " + r.heure : ""), "RDV");
   r.bilan = { ...(r.bilan || {}), [y]: { c: r.cible, r: rDone(r, y) } };
-  try { const saved = await SupaStore.saveRec({ ...r }, S); S.rsel = saved.id; S.rdraft = JSON.parse(JSON.stringify(saved)); if (!silent) toast("Client enregistré"); render(); return true; }
+  const dupNew = rDraftDups(r).filter(x => !old || rAddrKey(old.adresse) !== rAddrKey(r.adresse));
+  try { const saved = await SupaStore.saveRec({ ...r }, S); S.rsel = saved.id; S.rdraft = JSON.parse(JSON.stringify(saved));
+    if (dupNew.length) toast("Client enregistré. Attention : adresse déjà utilisée par " + dupNew.map(rLabel).join(", ")); else if (!silent) toast("Client enregistré"); render(); return true; }
   catch (err) { toast("Enregistrement impossible : " + err.message); return false; }
 }
 async function readRecFile(file) {
@@ -1682,12 +1702,14 @@ function prepareRecImport(list) {
     if (["code", "site", "client", "adresse"].every(f => String(o[f] || "") === String(n[f] || "")) && (+o.cible || 0) === (+n.cible || 0)) { inch++; return; }
     rows.push(n); maj++; });
   const absents = (S.recurrents || []).filter(r => r.source !== "Saisie" && !seen.has(rKey(r.code, r.site || r.client))).length;
-  return { total: list.length, neuf, maj, inch, dbl, manuels, proteges, absents, rows, cible: list.reduce((n, x) => n + x.cible, 0) };
+  const ak = new Map(); list.forEach(x => { const k = rAddrKey(x.adresse); if (k.length >= 6) ak.set(k, (ak.get(k) || 0) + 1); });
+  const adup = [...ak.values()].filter(n => n > 1);
+  return { total: list.length, neuf, maj, inch, dbl, manuels, proteges, absents, rows, cible: list.reduce((n, x) => n + x.cible, 0), adrGroupes: adup.length, adrLignes: adup.reduce((a, n) => a + n, 0) };
 }
 function recCsv() {
   const y = rYear(), q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"', L = rFiltered();
-  const lines = [["Client","Site","Code","Adresse","Contact","Téléphone","Mail","Visites cible","Réalisées " + y,"Reste","Prochain RDV","Heure"].map(q).join(";")]
-    .concat(L.map(r => [rLabel(r), r.site, r.code, r.adresse, r.contact, r.tel, r.mail, +r.cible || 0, rDone(r), rReste(r), r.dateRDV ? fr(r.dateRDV) : "", r.heure].map(q).join(";")));
+  const lines = [["Client","Site","Code","Adresse","Contact","Téléphone","Mail","Visites cible","Réalisées " + y,"Reste","Prochain RDV","Heure","Doublon d'adresse"].map(q).join(";")]
+    .concat(L.map(r => [rLabel(r), r.site, r.code, r.adresse, r.contact, r.tel, r.mail, +r.cible || 0, rDone(r), rReste(r), r.dateRDV ? fr(r.dateRDV) : "", r.heure, rDupMap().has(r.id) ? "oui (" + (rDups(r).length + 1) + ")" : ""].map(q).join(";")));
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
   a.download = "RDV_recurrents_" + isoToday() + ".csv"; document.body.appendChild(a); a.click(); a.remove();
 }
@@ -1702,6 +1724,7 @@ async function recClick(t) {
   if (t.dataset.goRec || t.closest("[data-go-rec]")) { go("recurrents"); return true; }
   const rf = t.closest("[data-rflag]"); if (rf) { if (S.access === "lecture") return true; const r = S.recurrents.find(x => String(x.id) === String(rf.dataset.rflag)); if (!r) return true;
     try { await SupaStore.flagRec(r.id, !r.flag, S); if (S.rdraft && String(S.rdraft.id) === String(r.id)) S.rdraft.flag = r.flag; toast(r.flag ? "Flag activé : RDV à planifier" : "Flag retiré"); render(); } catch (err) { toast("Flag impossible : " + err.message); } return true; }
+  const rg = t.closest("[data-rgo]"); if (rg) { openRec(rg.dataset.rgo); return true; }
   const ro = t.closest("[data-ropen]"); if (ro && !t.closest(".sheet")) { openRec(ro.dataset.ropen); return true; }
   if (t.id === "rnew") { S.rsel = "__new"; S.rdraft = { id: "", code: "", client: "", site: "", adresse: "", cible: 1, contact: "", fonction: "", tel: "", mail: "", dateRDV: "", heure: "", duree: "", lieu: "", objet: "", visites: [], bilan: {}, verrous: [], hist: "", source: "Saisie", flag: false, consigne: "", interlocuteurs: [], modif: "" };
     S.rpick = false; S.rpickQ = ""; render(); setTimeout(() => document.getElementById("r-client")?.focus(), 0); return true; }
@@ -1716,6 +1739,8 @@ async function recClick(t) {
       const fresh = await SupaStore.all("recurrents"); S.recurrents = fresh.map(rFromDb); S.rimport = null; toast("Import terminé : " + imp.neuf + " nouveau(x), " + imp.maj + " mis à jour"); }
     catch (err) { imp.busy = false; toast("Import impossible : " + err.message); } render(); return true; }
   if (t.id === "rexport") { recCsv(); return true; }
+  if (t.id === "rprint-list") { printRecList(); return true; }
+  if (t.id === "rprint") { readRDraft(); printRec(S.rdraft); return true; }
   if (t.id === "r-unlock") { readRDraft(); S.rdraft.verrous = []; toast("Enregistrez : le prochain import reprendra les valeurs de l'Excel"); render(); return true; }
   if (t.id === "rsec-add") { readRDraft(); S.rdraft.interlocuteurs = intl(S.rdraft).concat([{ nom: "", fonction: "", tel: "", mail: "" }]); render(); setTimeout(() => document.getElementById("rik-" + (S.rdraft.interlocuteurs.length - 1) + "-nom")?.focus(), 0); return true; }
   if (t.id === "rsec-pick") { readRDraft(); const on = S.rpick && S.rpickFor === "sec"; S.rpick = !on; S.rpickFor = "sec"; if (S.rpick && !S.rpickQ) S.rpickQ = S.rdraft.client || ""; render(); if (S.rpick) setTimeout(() => { const q = document.getElementById("rpick-q"); if (q) { q.focus(); q.select(); } }, 0); return true; }
@@ -2056,6 +2081,35 @@ function printOffre(o) {
     ${pSec("Historique")}${pHist(o.hist)}`, "portrait", "Offre " + [o.num, o.soc].filter(Boolean).join(" "));
 }
 
+function printRecList() {
+  const L = rFiltered(), T = rTotals(L), y = rYear(), F = S.rflt, nFlag = L.filter(r => r.flag).length;
+  const crit = [F.q && "recherche « " + F.q + " »", F.etat, F.flag && "flag uniquement", F.dbl && "doublons d'adresse", !F.dbl && F.hide && "clients sans visite cible masqués"].filter(Boolean);
+  const rows = L.map(r => { const c = +r.cible || 0, d = rDone(r), re = rReste(r);
+    return `<tr class="${r.flag ? "p-flag" : ""}"><td><b>${r.flag ? "⚑ " : ""}${esc(rLabel(r))}</b>${rSame(r) ? "" : `<br><span class="p-mut">${esc(r.site)}</span>`}${r.code ? `<br><span class="p-mut">${esc(r.code)}</span>` : ""}</td>
+    <td>${esc(r.adresse)}${rDupMap().has(r.id) ? `<br><span class="p-mut">Doublon d'adresse (${rDups(r).length + 1})</span>` : ""}</td><td>${esc(r.contact)}${r.tel ? `<br><span class="p-mut">${esc(r.tel)}</span>` : ""}</td>
+    <td class="p-num">${c}</td><td class="p-num"><b>${d}</b></td><td class="p-num">${re ? "<b>" + re + "</b>" : "0"}</td>
+    <td class="p-nw">${r.dateRDV ? "<b>" + fr(r.dateRDV) + "</b>" + (r.heure ? "<br>" + esc(r.heure) : "") : ""}</td><td>${esc(rEtat(r))}</td></tr>`; }).join("");
+  doPrint(printHead("Liste des RDV récurrents " + y, crit.length ? "Filtres : " + crit.join(", ") : "Tous les clients récurrents", "RDV récurrents") +
+    `<div class="p-kpis">${pKpi("Clients", T.n)}${pKpi("Visites cible " + y, T.c)}${pKpi("Visites réalisées", T.d, "ok")}${pKpi("Reste à réaliser", T.reste, T.reste ? "warn" : "")}${pKpi("Avancement", T.pct + " %")}${pKpi("Flagués à planifier", nFlag, nFlag ? "warn" : "")}</div>` +
+    `<table class="p-table"><colgroup><col style="width:24%"><col style="width:21%"><col style="width:16%"><col style="width:7%"><col style="width:7%"><col style="width:6%"><col style="width:9%"><col style="width:10%"></colgroup><thead><tr><th>Client / site / code</th><th>Adresse</th><th>Contact</th><th class="p-num">Visites cible</th><th class="p-num">Réalisées ${y}</th><th class="p-num">Reste</th><th>Prochain RDV</th><th>État</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="p-none">Aucun client.</td></tr>`}</tbody>` +
+    (L.length ? `<tfoot><tr><td colspan="3">Total des ${T.n} client(s) affiché(s) · ${T.rdv} RDV fixé(s)</td><td class="p-num">${T.c}</td><td class="p-num">${T.d}</td><td class="p-num">${T.reste}</td><td colspan="2">${T.pct} % réalisé</td></tr></tfoot>` : "") + `</table>`, "landscape", "Liste des RDV récurrents");
+}
+function printRec(r) {
+  const kv = pKv, y = rYear(), c = +r.cible || 0, d = rDone(r), re = Math.max(0, c - d);
+  const vis = (r.visites || []).slice().sort((a, b) => String(b.d).localeCompare(String(a.d)));
+  const years = [...new Set(Object.keys(r.bilan || {}).concat(vis.map(v => String(v.d || "").slice(0, 4))).filter(x => x && x !== y))].sort().reverse();
+  doPrint(printHead(rLabel(r), [rSame(r) ? "" : r.site, r.code, r.modif && "modifié le " + r.modif].filter(Boolean).join(" · "), "RDV récurrent") +
+    `<div class="p-kpis">${pKpi("Visites " + y, d + " / " + c, c && d >= c ? "ok" : "")}${pKpi("Reste à réaliser", re, re ? "warn" : "ok")}${pKpi("Prochain RDV", r.dateRDV ? fr(r.dateRDV) + (r.heure ? " · " + r.heure : "") : "", r.dateRDV ? "ok" : "")}${pKpi("État", (r.flag ? "⚑ à planifier · " : "") + rEtat(r), r.flag ? "warn" : "")}</div>
+    ${r.consigne ? pSec("Consignes") + `<div class="p-box">${esc(r.consigne)}</div>` : ""}
+    ${pSec("Client")}<div class="p-grid">${kv("Client", r.client)}${kv("Code client", r.code)}${kv("Site / adresse de visite", rSame(r) ? "" : r.site, true)}${kv("Adresse", r.adresse, true)}${kv("Nbre de visites cible (par an)", String(c))}${kv("Origine", r.source === "Saisie" ? "Ajouté à la main" : "Import Excel")}</div>
+    ${pSec("Personne de contact")}<div class="p-grid">${kv("Contact", r.contact)}${kv("Fonction", r.fonction)}${kv("Téléphone", r.tel)}${kv("Mail", r.mail)}${intl(r).filter(x => x.nom || x.tel || x.mail).map((x, i) => kv("Contact secondaire " + (i + 1), [x.nom, x.fonction, x.tel, x.mail].filter(Boolean).join(" · "), true)).join("")}</div>
+    ${r.dateRDV ? pSec("Prochain rendez-vous") + `<div class="p-grid">${kv("Date", fr(r.dateRDV) + " (" + dow(r.dateRDV) + ")")}${kv("Heure", r.heure)}${kv("Durée", r.duree ? r.duree + " h" : "")}${kv("Lieu / format", r.lieu)}${kv("Objet", r.objet, true)}</div>` : ""}
+    ${pSec("Visites réalisées", vis.length)}${vis.length ? `<table class="p-table p-lines"><colgroup><col style="width:22%"><col style="width:18%"><col style="width:18%"><col style="width:42%"></colgroup><thead><tr><th>Date</th><th>Heure</th><th>Année</th><th>Compte pour</th></tr></thead><tbody>${vis.map(v => `<tr><td class="p-nw"><b>${fr(v.d)}</b> (${dow(v.d)})</td><td>${esc(v.h || "")}</td><td>${esc(String(v.d).slice(0, 4))}</td><td>${String(v.d).startsWith(y) ? "Décompte " + y : "Bilan " + esc(String(v.d).slice(0, 4))}</td></tr>`).join("")}</tbody></table>` : `<p class="p-none">Aucune visite enregistrée.</p>`}
+    ${years.length ? pSec("Bilan des années précédentes") + `<div class="p-grid">${years.map(a => kv(a, rDone(r, a) + " visite(s) réalisée(s)" + ((r.bilan || {})[a] && (r.bilan[a]).c !== undefined ? " sur " + r.bilan[a].c + " visées" : ""))).join("")}</div>` : ""}
+    ${pSec("Historique")}${pHist(r.hist)}
+    <div class="p-keep">${pSec("Notes de visite")}<div class="p-notes"><div></div><div></div><div></div><div></div><div></div></div></div>`, "portrait", "RDV récurrent " + rLabel(r));
+}
+
 /* ---------- Partage (texte, PDF, vCard) ---------- */
 const JSPDF = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
 const MGH_FOOT = "MGH NV · Rittwegerlaan 2B, B-1830 Machelen · +32 (0)2 753 00 40 · www.MGH.be";
@@ -2221,7 +2275,7 @@ function mobFilters() {
   const cnt = F => ["etape","pays","prio","resp","alerte","flag","statut"].filter(k => F[k]).length + (F.zones && F.zones.length ? 1 : 0) + (F.open === "1" ? 0 : 1);
   $app.querySelectorAll(".split>div>.filters").forEach(el => {
     const q = el.querySelector('input[type=search]'); if (!q) return;
-    const n = S.view === "fiches" ? cnt(S.flt) : S.view === "offres" ? cnt(S.oflt) : S.view === "carnet" ? (S.cHide ? 1 : 0) : S.view === "recurrents" ? (S.rflt.etat ? 1 : 0) + (S.rflt.hide ? 0 : 1) + (S.rflt.flag ? 1 : 0) : 0;
+    const n = S.view === "fiches" ? cnt(S.flt) : S.view === "offres" ? cnt(S.oflt) : S.view === "carnet" ? (S.cHide ? 1 : 0) : S.view === "recurrents" ? (S.rflt.etat ? 1 : 0) + (S.rflt.hide ? 0 : 1) + (S.rflt.flag ? 1 : 0) + (S.rflt.dbl ? 1 : 0) : 0;
     const b = document.createElement("button"); b.type = "button"; b.className = "btn small f-toggle" + (n ? " on" : ""); b.dataset.ftoggle = "1";
     b.setAttribute("aria-expanded", String(!!S.fopen)); b.textContent = (S.fopen ? "Masquer les filtres" : "Filtres") + (n ? " (" + n + ")" : "");
     q.after(b); el.classList.toggle("open", !!S.fopen);
@@ -2467,6 +2521,7 @@ $app.addEventListener("change", async e => {
     try { const list = await readRecFile(file); S.rimport = { file: file.name, ...prepareRecImport(list) }; render(); }
     catch (err) { toast("Import impossible : " + err.message); } e.target.value = ""; return; }
   if (e.target.id === "r-flag") { S.rflt.flag = e.target.checked; render(); return; }
+  if (e.target.id === "r-dbl") { S.rflt.dbl = e.target.checked; render(); return; }
   if (e.target.id === "rf-etat") { S.rflt.etat = e.target.value; render(); return; }
   if (e.target.id === "r-hide") { S.rflt.hide = e.target.checked; try { localStorage.setItem("mgh-r-hide", S.rflt.hide ? "1" : "0"); } catch (er) {} render(); return; }
   if (e.target.id === "inst-file" && e.target.files[0]) { const inp = e.target; inp.disabled = true;

@@ -243,6 +243,12 @@ tr.tot td{font-weight:700;background:var(--surface-2);border-top:2px solid var(-
 .ag-chip{display:block;width:100%;text-align:left;border:0;border-left:3px solid var(--accent);background:var(--accent-soft);color:var(--ink);font-size:12px;padding:3px 6px;border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ag-chip.done{border-left-color:var(--ok);background:var(--surface-2);color:var(--muted)}
 .ag-chip b{font-variant-numeric:tabular-nums}
+.ag-cell.indispo{background:repeating-linear-gradient(135deg,var(--surface-2) 0 6px,transparent 6px 12px)}
+.ag-ind,.tg-ad .ag-ind{display:block;width:100%;border-left:3px solid var(--crit);background:var(--surface-2);color:var(--muted);font-size:12px;padding:3px 6px;border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tg-ind{position:absolute;left:0;right:0;z-index:0;pointer-events:none;border-left:3px solid var(--crit);background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--crit) 14%,transparent) 0 6px,transparent 6px 12px)}
+.tg-ind.full{top:0;bottom:0}.tg-ind span{display:block;font-size:11px;color:var(--crit);padding:2px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tg-ev{z-index:1}
+.ag-ind-panel h2{display:flex;align-items:center;gap:8px}
 .ag-list{margin-top:16px}
 .ag-num{border:0;background:none;cursor:pointer;font:inherit}
 .ag-head .seg{margin-left:4px}
@@ -408,7 +414,7 @@ const CONFIG = {
   supabaseUrl: "https://qexfitgmhzpgengmbxqk.supabase.co",
   supabaseKey: "sb_publishable_h-VgO27UVILom4l6YFsSdA_wd46MdJf"   // clé publique, protégée par les règles d'accès de la base
 };
-const APP_VERSION = "2026.11.16-1215";
+const APP_VERSION = "2026.11.20-1145";
 const ETAPES = ["1-À contacter","2-Tentative en cours","3-RDV proposé","4-RDV fixé","5-RDV réalisé","6-Recontacter plus tard","7-Refus / hors cible"];
 const ET_COLORS = ["#8F9298","#5468A8","#C77700","#24346C","#2E7D32","#6B6E74","#B71C1C"];
 const LIEUX = ["Sur site client","Atelier Machelen","Atelier Anvers","Teams / visio","Téléphone","Salon / événement"];
@@ -753,7 +759,7 @@ const SupaStore = {
 const Store = CONFIG.mode === "supabase" ? SupaStore : DemoStore;
 
 /* ===================== État de l'interface ===================== */
-const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], offres: [], contacts: [], pieces: [], recurrents: [], rsel: null, rdraft: null, rflt: { q: "", etat: "", hide: true, flag: false, dbl: false }, csel: null, cdraft: null, cq: "", pick: false, pickQ: "", osel: null, odraft: null, opendingFile: null,
+const S = { jf: { type: "", email: "", days: "30", rec: null }, fiches: [], tournees: [], offres: [], contacts: [], pieces: [], recurrents: [], rsel: null, rdraft: null, rflt: { q: "", etat: "", hide: true, flag: false, dbl: false }, indispos: [], indForm: null, csel: null, cdraft: null, cq: "", pick: false, pickQ: "", osel: null, odraft: null, opendingFile: null,
   oflt: { q: "", statut: "", alerte: "", resp: "", open: "1" }, osort: ["relance", 1], view: "dash", role: "DM", sel: null, draft: null,
   flt: { q: "", etape: "", pays: "", prio: "", resp: "", alerte: "", open: "1", flag: "", zones: [] }, sort: ["relance", 1] };
 try { const p = JSON.parse(localStorage.getItem("mgh-suivi-rdv-ui") || "{}"); if (p.role) S.role = p.role; if (p.flt) Object.assign(S.flt, p.flt); } catch (e) {}
@@ -761,7 +767,7 @@ if (!Array.isArray(S.flt.zones)) S.flt.zones = [];
 try { S.agMode = localStorage.getItem("mgh-ag-mode") || "mois"; S.fmode = localStorage.getItem("mgh-fmode") || "liste"; S.cHide = localStorage.getItem("mgh-c-hide") === "1"; S.rflt.hide = localStorage.getItem("mgh-r-hide") !== "0"; } catch (e) {}
 const saveUi = () => { try { localStorage.setItem("mgh-suivi-rdv-ui", JSON.stringify({ role: S.role, flt: S.flt })); } catch (e) {} };
 const $app = document.getElementById("app");
-function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 2200); }
+function toast(msg, ms) { const t = document.getElementById("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, ms || 2200); }
 
 /* ===================== Vues ===================== */
 function pill(e) { return e ? `<span class="pill e${etIdx(e)+1}">${esc(e)}</span>` : ""; }
@@ -1672,6 +1678,7 @@ async function saveRec(silent) {
   const r = S.rdraft; if (!String(r.client || r.site || "").trim()) { toast("Indiquez le nom du client"); return false; }
   const old = (S.recurrents || []).find(x => String(x.id) === String(r.id)), y = rYear();
   r.cible = Math.max(0, Math.round(+r.cible || 0));
+  if (await indBloque(r, old)) { document.getElementById("r-dateRDV")?.focus(); return false; }
   if (old && r.source !== "Saisie") { const v = new Set(r.verrous || []); if (String(old.client || "") !== String(r.client || "")) v.add("client"); if (String(old.adresse || "") !== String(r.adresse || "")) v.add("adresse"); if ((+old.cible || 0) !== r.cible) v.add("cible"); r.verrous = [...v]; }
   if (r.dateRDV && (!old || old.dateRDV !== r.dateRDV)) r.flag = false;
   if (old && old.dateRDV !== r.dateRDV && r.dateRDV) rNote("RDV fixé le " + fr(r.dateRDV) + (r.heure ? " à " + r.heure : ""), "RDV");
@@ -1772,6 +1779,7 @@ async function recClick(t) {
       rNote("Visite réalisée le " + fr(dte), "Visite"); if (d.dateRDV && d.dateRDV <= today) { d.dateRDV = ""; d.heure = ""; } toast("Visite comptée : pensez à enregistrer"); render(); return true; }
     if (a === "cancel") { if (!d.dateRDV) { toast("Aucun RDV fixé à annuler"); return true; } rNote("RDV du " + fr(d.dateRDV) + (d.heure ? " à " + d.heure : "") + " annulé", "RDV"); d.dateRDV = ""; d.heure = ""; toast("RDV annulé : pensez à enregistrer"); render(); return true; }
     if (!d.dateRDV) { toast("Indiquez d'abord la date du RDV"); return true; }
+    { const x = (a === "outlook" || a === "ics") && indConflit(d.dateRDV, d.heure, d.duree); if (x) { toast(indMsg(x, d.heure), 6000); return true; } }
     if (a === "outlook") { window.open(outlookUrl(recFiche({ ...d, id: d.id || "nouveau" })), "_blank", "noopener"); if (S.access !== "lecture") await saveRec(true); toast("Outlook ouvert : vérifiez puis envoyez l'invitation"); return true; }
     if (a === "ics") { icsFor(recFiche({ ...d, id: d.id || "nouveau" })); if (S.access !== "lecture") await saveRec(true); toast("Fichier .ics téléchargé : ouvrez-le pour l'ajouter à Outlook"); return true; }
   }
@@ -1784,6 +1792,7 @@ const H0 = 7, H1 = 20, HPX = 48;
 const JOURS_L = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
 const mondayOf = iso => { const [y, m, d] = iso.split("-").map(Number); return addDays(iso, -((new Date(y, m - 1, d).getDay() + 6) % 7)); };
 const minOf = h => { if (!h) return null; const [a, b] = h.split(":").map(Number); return a * 60 + (b || 0); };
+function indChip(x) { return `<span class="ag-ind" title="${esc("Indisponible " + indTxt(x))}"><b>${esc(x.h1 && x.h2 ? x.h1 + "–" + x.h2 : "Indispo.")}</b> ${esc(x.motif || "Indisponible")}</span>`; }
 function agChip(f) { return `<button class="ag-chip ${f.etape === ETAPES[4] ? "done" : ""}" data-open="${esc(f.id)}" title="${esc((f.heure || "") + " " + f.soc + (f.lieu ? " · " + f.lieu : ""))}"><b>${esc(f.heure || "--:--")}</b> ${esc(f.soc)}</button>`; }
 function agRow(f, showDay) { return `<button class="row" data-open="${esc(f.id)}"><span class="r-date num">${showDay ? dow(f.dateRDV) + " " + f.dateRDV.slice(8,10) + "/" + f.dateRDV.slice(5,7) : esc(f.heure || "heure ?")}<small>${showDay ? esc(f.heure || "heure ?") : ""}${f.duree ? (showDay ? " · " : "") + esc(f.duree) + " h" : ""}</small></span>
   <span style="min-width:0"><span class="r-soc">${esc(f.soc)}</span><span class="r-sub">${esc([f.contact, f.lieu, f.lieu === "Sur site client" || !f.lieu ? f.adr : "", zoneTxt(f)].filter(Boolean).join(" · "))}</span></span>
@@ -1792,8 +1801,8 @@ function timeGrid(days, detailed) {
   const all = agRdv(), today = isoToday(), now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
   const hours = []; for (let h = H0; h <= H1; h++) hours.push(h);
   const head = `<div class="tg-corner"></div>` + days.map((d, i) => `<button class="tg-dh ${d === today ? "today" : ""}" data-ag-day="${d}">${JOURS_L[(new Date(+d.slice(0,4), +d.slice(5,7) - 1, +d.slice(8)).getDay() + 6) % 7].slice(0, detailed ? 20 : 3)}${detailed ? "" : "."} <b>${Number(d.slice(8))}</b>${detailed ? " " + MOIS[Number(d.slice(5,7)) - 1] : ""}</button>`).join("");
-  const untimed = days.map(d => all.filter(f => f.dateRDV === d && minOf(f.heure) === null));
-  const allday = untimed.some(L => L.length) ? `<div class="tg-lbl tg-ad">sans heure</div>` + untimed.map(L => `<div class="tg-ad">${L.map(agChip).join("")}</div>`).join("") : "";
+  const untimed = days.map(d => all.filter(f => f.dateRDV === d && minOf(f.heure) === null)), indFull = days.map(d => indDay(d).filter(x => !(x.h1 && x.h2)));
+  const allday = untimed.some(L => L.length) || indFull.some(L => L.length) ? `<div class="tg-lbl tg-ad">journée</div>` + untimed.map((L, i) => `<div class="tg-ad">${indFull[i].map(indChip).join("")}${L.map(agChip).join("")}</div>`).join("") : "";
   const cols = days.map(d => {
     const ev = all.filter(f => f.dateRDV === d && minOf(f.heure) !== null).map(f => { const s = minOf(f.heure), e = s + Math.round((+f.duree || 2) * 60); return { f, s, e }; }).sort((a, b) => a.s - b.s);
     const lanes = []; ev.forEach(x => { let i = lanes.findIndex(end => end <= x.s); if (i < 0) { i = lanes.length; lanes.push(0); } lanes[i] = x.e; x.lane = i; });
@@ -1802,10 +1811,54 @@ function timeGrid(days, detailed) {
       const fin = pad(Math.floor(x.e / 60) % 24) + ":" + pad(x.e % 60);
       return `<button class="tg-ev ${f.etape === ETAPES[4] ? "done" : ""}" data-open="${esc(f.id)}" style="top:${top}px;height:${h - 2}px;left:calc(${x.lane / n * 100}% + 2px);width:calc(${100 / n}% - 4px)">
         <b class="num">${esc(f.heure)}–${fin}</b> <span class="tg-soc">${esc(f.soc)}</span>${h >= 44 ? `<span class="tg-sub">${esc([detailed ? f.contact : "", f.lieu === "Sur site client" || !f.lieu ? (f.adr || "") : f.lieu].filter(Boolean).join(" · "))}</span>` : ""}${detailed && h >= 70 && f.objet ? `<span class="tg-sub">${esc(f.objet)}</span>` : ""}</button>`; }).join("");
+    const ind = indDay(d).map(x => { if (!(x.h1 && x.h2)) return `<div class="tg-ind full" title="${esc("Indisponible " + indTxt(x))}"></div>`;
+      const a = Math.max(minOf(x.h1), H0 * 60), b = Math.min(minOf(x.h2), (H1 + 1) * 60); if (b <= a) return "";
+      return `<div class="tg-ind" style="top:${(a - H0 * 60) / 60 * HPX}px;height:${(b - a) / 60 * HPX}px" title="${esc("Indisponible " + indTxt(x))}"><span>${esc(x.h1 + "–" + x.h2 + " " + (x.motif || "Indisponible"))}</span></div>`; }).join("");
     const nowLine = d === today && nowMin >= H0 * 60 && nowMin <= (H1 + 1) * 60 ? `<div class="tg-now" style="top:${(nowMin - H0 * 60) / 60 * HPX}px"></div>` : "";
-    return `<div class="tg-col ${d === today ? "today" : ""}" style="height:${(H1 - H0 + 1) * HPX}px">${blocks}${nowLine}</div>`; }).join("");
+    return `<div class="tg-col ${d === today ? "today" : ""}" style="height:${(H1 - H0 + 1) * HPX}px">${ind}${blocks}${nowLine}</div>`; }).join("");
   const lbls = `<div class="tg-hours" style="height:${(H1 - H0 + 1) * HPX}px">${hours.map(h => `<span style="top:${(h - H0) * HPX}px">${pad(h)}:00</span>`).join("")}</div>`;
   return `<div class="tg" style="grid-template-columns:56px repeat(${days.length}, minmax(0,1fr))">${head}${allday}${lbls}${cols}</div>`;
+}
+/* ---------- Indisponibilités (stockées dans parametres, clé « indispos ») ---------- */
+async function loadIndispos(force) {
+  if (CONFIG.mode !== "supabase") return; if (!force && loadIndispos.t && Date.now() - loadIndispos.t < 60000) return;
+  try { const p = await SupaStore.param("indispos"); S.indispos = Array.isArray(p && p.valeur) ? p.valeur : []; loadIndispos.t = Date.now(); } catch (e) { if (force) throw e; }
+}
+const indAu = x => x.au && x.au >= x.du ? x.au : x.du;
+const indDay = d => (S.indispos || []).filter(x => d >= x.du && d <= indAu(x));
+const indHeures = x => x.h1 && x.h2 ? x.h1 + "–" + x.h2 : "journée entière";
+const indTxt = x => (x.du === indAu(x) ? "le " + fr(x.du) : "du " + fr(x.du) + " au " + fr(indAu(x))) + " (" + indHeures(x) + ")" + (x.motif ? " : " + x.motif : "");
+// Renvoie l'indisponibilité qui chevauche un RDV (date, heure, durée en h ; 1 h par défaut). Sans heure, toute indisponibilité du jour bloque.
+function indConflit(date, heure, duree) { if (!date) return null; const s = minOf(heure), e = s === null ? null : s + Math.round((+duree || 1) * 60);
+  return indDay(date).find(x => !(x.h1 && x.h2) || s === null || (s < minOf(x.h2) && e > minOf(x.h1))) || null; }
+const indMsg = (x, heure) => "Impossible : indisponibilité " + indTxt(x) + (x.h1 && x.h2 && !heure ? ". Indiquez une heure en dehors de cette plage." : ". Choisissez une autre date ou heure.");
+// Contrôle avant enregistrement : uniquement si la date, l'heure ou la durée du RDV changent
+async function indBloque(o, prev) {
+  if (!o.dateRDV || (prev && prev.dateRDV === o.dateRDV && String(prev.heure || "") === String(o.heure || "") && String(prev.duree || "") === String(o.duree || ""))) return false;
+  try { await loadIndispos(true); } catch (e) {}
+  const x = indConflit(o.dateRDV, o.heure, o.duree); if (!x) return false;
+  toast(indMsg(x, o.heure), 6000); return true;
+}
+function indRdvs(x) { return agRdv().filter(f => f.etape === ETAPES[3] && f.dateRDV >= x.du && f.dateRDV <= indAu(x) && (!(x.h1 && x.h2) || minOf(f.heure) === null || (minOf(f.heure) < minOf(x.h2) && minOf(f.heure) + Math.round((+f.duree || 1) * 60) > minOf(x.h1)))); }
+function indPanel() {
+  const ro = S.access === "lecture", F = S.indForm, today = isoToday();
+  const L = (S.indispos || []).filter(x => indAu(x) >= today).sort((a, b) => (a.du + (a.h1 || "")).localeCompare(b.du + (b.h1 || "")));
+  const form = F ? `<form id="ind-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;align-items:end;margin:0 0 12px">
+      <div class="f"><label for="ind-du">Du</label><input id="ind-du" type="date" required value="${esc(F.du)}"></div>
+      <div class="f"><label for="ind-au">Au (inclus)</label><input id="ind-au" type="date" value="${esc(F.au)}"></div>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px;padding-bottom:10px"><input type="checkbox" id="ind-jour" ${F.jour ? "checked" : ""}> Journée(s) entière(s)</label>
+      <div class="f"><label for="ind-h1">De</label><input id="ind-h1" type="time" value="${esc(F.h1)}" ${F.jour ? "disabled" : ""}></div>
+      <div class="f"><label for="ind-h2">À</label><input id="ind-h2" type="time" value="${esc(F.h2)}" ${F.jour ? "disabled" : ""}></div>
+      <div class="f" style="grid-column:span 2"><label for="ind-motif">Motif</label><input id="ind-motif" type="text" maxlength="80" placeholder="Congé, formation, salon, réunion interne…" value="${esc(F.motif)}"></div>
+      <span style="display:flex;gap:8px"><button class="btn small" type="button" id="ind-cancel">Annuler</button><button class="btn small primary" type="submit">Enregistrer</button></span></form>` : "";
+  return `<section class="panel ag-ind-panel"><h2><span class="lbl">Indisponibilités à venir</span>${ro || F ? "" : `<button class="btn small" id="ind-new" type="button" style="margin-left:auto">+ Indisponibilité</button>`}</h2>${form}
+    <div class="rows">${L.length ? L.map(x => { const R = indRdvs(x);
+      return `<div class="row" style="grid-template-columns:minmax(0,1fr) auto;cursor:default"><span style="min-width:0"><span class="r-soc">${esc(x.motif || "Indisponible")}</span><span class="r-sub">${esc(indTxt(x).replace(/ : .*$/, ""))}${x.par ? " · ajouté par " + esc(x.par) : ""}</span>${R.length ? `<span class="al warn">${R.length} RDV déjà fixé(s) sur cette période : ${esc(R.map(f => f.soc + " " + fr(f.dateRDV) + (f.heure ? " " + f.heure : "")).join(", "))}</span>` : ""}</span>
+        <span>${ro ? "" : `<button class="btn small ghost" data-ind-del="${esc(x.id)}" style="color:var(--crit)">${S.indDel === x.id ? "Confirmer" : "Supprimer"}</button>`}</span></div>`; }).join("") : `<p class="empty">Aucune indisponibilité à venir.</p>`}</div></section>`;
+}
+async function indSave(list, okMsg) {
+  try { await SupaStore.setParam("indispos", list); S.indispos = list; loadIndispos.t = Date.now(); toast(okMsg, 5000); return true; }
+  catch (err) { toast("Enregistrement impossible : " + err.message, 6000); return false; }
 }
 function viewAgenda() {
   const today = isoToday(); if (!S.agDate) S.agDate = today; const mode = S.agMode || "mois", D = S.agDate;
@@ -1816,7 +1869,8 @@ function viewAgenda() {
     all.forEach(f => { (byDay[f.dateRDV] = byDay[f.dateRDV] || []).push(f); });
     let grid = ["lun.","mar.","mer.","jeu.","ven.","sam.","dim."].map(d => `<div class="ag-dow">${d}</div>`).join("");
     for (let i = 0; i < cells; i++) { const d = addDays(start, i), L = byDay[d] || [];
-      grid += `<div class="ag-cell ${d.slice(0, 7) !== ym ? "out" : ""} ${i % 7 >= 5 ? "we" : ""} ${d === today ? "today" : ""}"><button class="ag-num" data-ag-day="${d}" aria-label="Voir le ${fr(d)}">${Number(d.slice(8))}</button>${L.map(agChip).join("")}</div>`; }
+      const I = indDay(d);
+      grid += `<div class="ag-cell ${d.slice(0, 7) !== ym ? "out" : ""} ${i % 7 >= 5 ? "we" : ""} ${d === today ? "today" : ""} ${I.some(x => !(x.h1 && x.h2)) ? "indispo" : ""}"><button class="ag-num" data-ag-day="${d}" aria-label="Voir le ${fr(d)}">${Number(d.slice(8))}</button>${I.map(indChip).join("")}${L.map(agChip).join("")}</div>`; }
     title = MOIS[m - 1] + " " + y; body = `<div class="ag-grid">${grid}</div>`;
     list = all.filter(f => f.dateRDV.startsWith(ym)); listTitle = "RDV du mois";
   } else if (mode === "semaine") {
@@ -1833,6 +1887,7 @@ function viewAgenda() {
       <button class="btn small" id="ag-today">Aujourd'hui</button><span class="seg">${seg}</span>
       <span class="count num">${list.filter(f => f.etape === ETAPES[3]).length} RDV fixé(s) · ${list.filter(f => f.etape === ETAPES[4]).length} réalisé(s)</span>
     </div>${body}
+    ${indPanel()}
     <section class="panel ag-list"><h2><span class="lbl">${listTitle}</span></h2><div class="rows">${list.length ? list.map(f => agRow(f, mode !== "jour")).join("") : `<p class="empty">Aucun RDV sur cette période.</p>`}</div></section>`;
 }
 function outlookUrl(f) {
@@ -2283,7 +2338,7 @@ function mobFilters() {
 }
 function setHdr() { const h = document.querySelector("header.top"); if (h) document.documentElement.style.setProperty("--hdr", Math.round(h.getBoundingClientRect().height) + "px"); }
 window.addEventListener("resize", () => { clearTimeout(setHdr.t); setHdr.t = setTimeout(setHdr, 100); });
-function go(view) { if (view === "setup" && SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal(), loadSauvegarde()]).then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } if (view !== "offres") { S.osel = null; S.odraft = null; S.opendingFile = null; } if (view !== "carnet") { S.csel = null; S.cdraft = null; } if (view !== "recurrents") { S.rsel = null; S.rdraft = null; S.rpick = false; } S.pick = false; render(); window.scrollTo(0,0); }
+function go(view) { if (view === "agenda") loadIndispos().then(() => { if (S.view === "agenda") render(); }); if (view === "setup" && SupaStore.isAdmin()) Promise.all([loadUsers(), loadJournal(), loadSauvegarde()]).then(() => { if (S.view === "setup") render(); }); S.view = view; if (view !== "tournees") { S.tsel = null; S.tdraft = null; } if (view !== "fiches") { S.sel = null; S.draft = null; } if (view !== "offres") { S.osel = null; S.odraft = null; S.opendingFile = null; } if (view !== "carnet") { S.csel = null; S.cdraft = null; } if (view !== "recurrents") { S.rsel = null; S.rdraft = null; S.rpick = false; } S.pick = false; render(); window.scrollTo(0,0); }
 function openFiche(id) { const f = S.fiches.find(x => String(x.id) === String(id)); if (!f) return; S.confirmDel = null; S.back = S.view === "agenda" ? "agenda" : S.view === "offres" && S.osel ? "offres" : null; S.sel = id; S.draft = {...f}; S.pick = false; S.pickMode = "principal"; S.confirmPDel = null; S.view = "fiches"; render(); }
 function newFiche() { S.sel = "__new"; S.draft = { id:"", soc:"", contact:"", tel:"", mail:"", adr:"", pays:"", zone:"", statut:"Prospect", prio:2, objet:"", consigne:"",
   resp:"Vit'Admin", etape:ETAPES[0], nb:0, last:"", relance:"", dateRDV:"", heure:"", duree:"", lieu:"", agenda:"", hist:"", entree:"", modif:"" }; render(); setTimeout(() => document.getElementById("d-soc")?.focus(), 0); }
@@ -2458,10 +2513,16 @@ $app.addEventListener("click", async e => {
     else S.agDate = addDays(D, dir * (mode === "semaine" ? 7 : 1));
     render(); return; }
   if (t.id === "ag-today") { S.agDate = isoToday(); render(); return; }
+  if (t.id === "ind-new") { const d = S.agDate || isoToday(); S.indForm = { du: d, au: d, jour: true, h1: "", h2: "", motif: "" }; S.indDel = null; render(); setTimeout(() => document.getElementById("ind-du")?.focus(), 0); return; }
+  if (t.id === "ind-cancel") { S.indForm = null; render(); return; }
+  const indl = t.closest("[data-ind-del]"); if (indl) { const id = indl.dataset.indDel; if (S.indDel !== id) { S.indDel = id; render(); return; }
+    try { await loadIndispos(true); } catch (e) {} const x = S.indispos.find(y => y.id === id);
+    if (await indSave(S.indispos.filter(y => y.id !== id), "Indisponibilité supprimée" + (x ? " : " + indTxt(x) : ""))) { S.indDel = null; render(); } return; }
   const am = t.closest("[data-ag-mode]"); if (am) { S.agMode = am.dataset.agMode; try { localStorage.setItem("mgh-ag-mode", S.agMode); } catch (e) {} render(); return; }
   const ad = t.closest("[data-ag-day]"); if (ad) { S.agDate = ad.dataset.agDay; S.agMode = "jour"; render(); return; }
   if (t.id === "outlook-web") { readDraft(); const d = S.draft;
     if (!d.dateRDV) { toast("Indiquez d'abord la date du RDV"); document.getElementById("d-dateRDV").focus(); return; }
+    { const x = indConflit(d.dateRDV, d.heure, d.duree); if (x) { toast(indMsg(x, d.heure), 6000); return; } }
     window.open(outlookUrl(d), "_blank", "noopener"); toast("Outlook ouvert : vérifiez puis cliquez sur Envoyer"); return; }
   if (t.id === "print-list") { printList(); return; }
   if (t.id === "share-fiche") { readDraft(); shareOpen("fiche", S.draft); return; }
@@ -2474,7 +2535,8 @@ $app.addEventListener("click", async e => {
   if (t.id === "export") { csvExport(); toast("Export CSV téléchargé"); return; }
   if (t.id === "install" && S.installEvt) { S.installEvt.prompt(); S.installEvt.userChoice.finally(() => { S.installEvt = null; render(); }); return; }
   if (t.id === "logout") { await SupaStore.logout(); return; }
-  if (t.id === "ics") { readDraft(); if (!S.draft.dateRDV) { toast("Indiquez d'abord la date du RDV"); return; } icsFor(S.draft); toast("Fichier .ics téléchargé : ouvrez-le pour l'ajouter à Outlook"); return; }
+  if (t.id === "ics") { readDraft(); if (!S.draft.dateRDV) { toast("Indiquez d'abord la date du RDV"); return; }
+    { const x = indConflit(S.draft.dateRDV, S.draft.heure, S.draft.duree); if (x) { toast(indMsg(x, S.draft.heure), 6000); return; } } icsFor(S.draft); toast("Fichier .ics téléchargé : ouvrez-le pour l'ajouter à Outlook"); return; }
   if (t.id === "reset-demo") { DemoStore.reset(); Object.assign(S, await DemoStore.load()); toast("Données de démonstration réinitialisées"); render(); return; }
   const q = t.closest("[data-q]");
   if (q) { readDraft(); const d = S.draft, today = isoToday();
@@ -2497,6 +2559,7 @@ $app.addEventListener("click", async e => {
     if (d.etape === ETAPES[3] && !d.dateRDV) { toast("RDV fixé : indiquez la date"); document.getElementById("d-dateRDV").focus(); return; }
     const isNew = !d.id;
     const prev = S.fiches.find(x => String(x.id) === String(d.id));
+    if (d.etape === ETAPES[3] && await indBloque(d, prev && prev.etape === ETAPES[3] ? prev : null)) { document.getElementById("d-dateRDV")?.focus(); return; }
     const geoChange = SupaStore.hasCol("lat") && (isNew || !prev || ["adr","pays","zone"].some(k => String(prev[k] || "") !== String(d[k] || "")));
     if (geoChange) { d.lat = ""; d.lng = ""; d.geo = ""; }
     if (prev && prev.etape === ETAPES[3] && (prev.dateRDV !== d.dateRDV || prev.heure !== d.heure)) d.agenda = "";
@@ -2516,7 +2579,21 @@ $app.addEventListener("input", e => {
   if (t.id === "oq") { S.oflt.q = t.value; clearTimeout(render.h); render.h = setTimeout(() => { render(); const q = document.getElementById("oq"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 180); }
   if (t.id === "q") { S.flt.q = t.value; clearTimeout(render.h); render.h = setTimeout(() => { saveUi(); render(); const q = document.getElementById("q"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 180); }
 });
+$app.addEventListener("submit", async e => {
+  if (e.target.id !== "ind-form") return; e.preventDefault();
+  const v = id => document.getElementById(id).value.trim(), jour = document.getElementById("ind-jour").checked;
+  const x = { id: "i" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), du: v("ind-du"), au: v("ind-au") || v("ind-du"), h1: jour ? "" : v("ind-h1"), h2: jour ? "" : v("ind-h2"), motif: v("ind-motif"), par: SupaStore.user || "", cree: new Date().toISOString() };
+  S.indForm = { du: x.du, au: x.au, jour, h1: x.h1, h2: x.h2, motif: x.motif };
+  if (!x.du) { toast("Indiquez la date de début"); return; }
+  if (x.au < x.du) { toast("La date de fin précède la date de début"); return; }
+  if (!jour && !(x.h1 && x.h2)) { toast("Indiquez l'heure de début et de fin, ou cochez Journée(s) entière(s)"); return; }
+  if (!jour && minOf(x.h2) <= minOf(x.h1)) { toast("L'heure de fin doit suivre l'heure de début"); return; }
+  try { await loadIndispos(true); } catch (err) {}
+  const R = indRdvs(x);
+  if (await indSave((S.indispos || []).concat([x]), "Indisponibilité enregistrée" + (R.length ? ". Attention : " + R.length + " RDV déjà fixé(s) sur cette période, à déplacer : " + R.map(f => f.soc + " " + fr(f.dateRDV)).join(", ") : ""))) { S.indForm = null; render(); }
+}, true);
 $app.addEventListener("change", async e => {
+  if (e.target.id === "ind-jour") { S.indForm = { du: document.getElementById("ind-du").value, au: document.getElementById("ind-au").value, jour: e.target.checked, h1: document.getElementById("ind-h1").value, h2: document.getElementById("ind-h2").value, motif: document.getElementById("ind-motif").value }; render(); return; }
   if (e.target.id === "r-import" && e.target.files[0]) { const file = e.target.files[0];
     try { const list = await readRecFile(file); S.rimport = { file: file.name, ...prepareRecImport(list) }; render(); }
     catch (err) { toast("Import impossible : " + err.message); } e.target.value = ""; return; }
@@ -2570,7 +2647,7 @@ document.addEventListener("drop", async e => { if (!e.dataTransfer || !e.dataTra
   await importOffrePdf(e.dataTransfer.files[0], false); });
 $app.addEventListener("submit", async e => {
   if (e.target.id === "login") { e.preventDefault(); const em = document.getElementById("l-email").value.trim(); S.lastEmail = em;
-    try { await SupaStore.login(em, document.getElementById("l-pass").value); S.loginMsg = ""; Object.assign(S, await Store.load()); boot2(); }
+    try { await SupaStore.login(em, document.getElementById("l-pass").value); S.loginMsg = ""; Object.assign(S, await Store.load()); await loadIndispos(); boot2(); }
     catch (err) { S.loginMsg = "Connexion impossible : " + err.message; } render(); return; }
   if (e.target.id === "sform") { e.preventDefault(); const frequence = document.getElementById("s-freq").value, jour = +document.getElementById("s-jour").value;
     try { await SupaStore.setParam("sauvegarde", { frequence, jour }); S.sauv.reglage = { frequence, jour }; S.sauv.ko = ""; render();
@@ -2596,7 +2673,7 @@ document.addEventListener("keydown", e => { if (e.key !== "Escape") return; if (
   else if (S.osel) { S.osel = null; S.odraft = null; S.opendingFile = null; render(); } });
 
 (async () => {
-  try { Object.assign(S, await Store.load()); }
+  try { Object.assign(S, await Store.load()); await loadIndispos(); }
   catch (err) { $app.innerHTML = `<div class="panel"><b>Connexion à la base impossible.</b><p>${esc(err.message)}</p><p>Vérifiez votre connexion internet puis rechargez la page.</p></div>`; return; }
   if (["#fiches", "#offres", "#agenda", "#carnet", "#tournees"].includes(location.hash)) S.view = location.hash.slice(1);
   boot2();
